@@ -41,6 +41,9 @@
           <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </button>
         <h1 id="ex-title" class="topbar-title"></h1>
+        <button id="btn-edit" class="btn-icon" aria-label="Изменить упражнение">
+          <svg viewBox="0 0 24 24" width="19" height="19"><path d="M4 20l1-4L16.5 4.5a2.12 2.12 0 013 3L8 19l-4 1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>
+        </button>
         <button id="btn-fav" class="btn-icon btn-star" aria-label="В избранное">
           <svg viewBox="0 0 24 24" width="22" height="22"><path class="star-path" d="M12 3.5l2.47 5.32 5.83.66-4.32 3.97 1.16 5.75L12 16.3l-5.14 2.9 1.16-5.75-4.32-3.97 5.83-.66z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/></svg>
         </button>
@@ -76,6 +79,15 @@
           </label>
         </div>
 
+        <div class="timer-row" role="group" aria-label="Таймер отдыха">
+          <button id="timer-minus" class="timer-side" aria-label="Минус 30 секунд">−30</button>
+          <button id="timer-main" aria-label="Таймер отдыха">
+            <span id="timer-fill" class="timer-fill"></span>
+            <span id="timer-label">⏱ 2:00</span>
+          </button>
+          <button id="timer-plus" class="timer-side" aria-label="Плюс 30 секунд">+30</button>
+        </div>
+
         <button id="btn-record" class="btn-primary">Записать</button>
 
         <div id="progress-block" class="progress-block" hidden>
@@ -94,7 +106,7 @@
         <button class="btn-icon btn-back" aria-label="Назад">
           <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </button>
-        <h1 class="topbar-title">Новое упражнение</h1>
+        <h1 id="add-title" class="topbar-title">Новое упражнение</h1>
         <span class="btn-icon"></span>
       </header>
 

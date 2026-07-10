@@ -71,12 +71,22 @@
     if (!inTg) return;
     try {
       if (screen === 'exercise') { tg.MainButton.setText('Записать'); tg.MainButton.show(); }
-      else if (screen === 'add') { tg.MainButton.setText('Добавить упражнение'); tg.MainButton.show(); }
+      else if (screen === 'add') { tg.MainButton.setText(editing ? 'Сохранить' : 'Добавить упражнение'); tg.MainButton.show(); }
       else tg.MainButton.hide();
     } catch (_) {}
   }
 
-  const goBack = () => { Storage.flush(); showScreen('home'); };
+  const goBack = () => {
+    Storage.flush();
+    if (screen === 'add' && editing) {
+      // из редактирования возвращаемся на экран упражнения, а не домой
+      const ex = editing;
+      editing = null;
+      openExercise(ex);
+      return;
+    }
+    showScreen('home');
+  };
   if (inTg) {
     try { tg.BackButton.onClick(goBack); } catch (_) {}
     try {
@@ -182,6 +192,7 @@
     $('inp-reps').value = '';
     document.querySelector('.scrub-hint').textContent = `тяните число вбок · шаг ${Viz.fmt(ex.step)} кг`;
     vizSvg.__viz = null; // не тянуть анимацию блинов от предыдущего упражнения
+    editIdx = -1;
     displayed = ex.weight;
     weightValue.textContent = Viz.fmt(ex.weight);
     vizNote.textContent = Viz.render(vizSvg, ex, ex.weight);
@@ -194,22 +205,84 @@
     if (current && current.id === id) renderLog();
   }
 
+  let editIdx = -1; // индекс редактируемой записи в currentLog
+
+  const fmtD = (iso) => new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' })
+    .format(new Date(iso + 'T00:00:00')).replace('.', '');
+
+  function saveLog() {
+    Storage.set(keyLog(current.id), currentLog);
+    Storage.flush();
+  }
+
   function renderLog() {
     const block = $('progress-block');
-    if (currentLog.length === 0) { block.hidden = true; return; }
+    if (currentLog.length === 0) { block.hidden = true; editIdx = -1; return; }
     block.hidden = false;
     Chart.render($('chart'), currentLog);
 
     const hist = $('history');
     hist.replaceChildren();
-    const fmtD = (iso) => new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'short' })
-      .format(new Date(iso + 'T00:00:00')).replace('.', '');
-    for (const e of currentLog.slice(-8).reverse()) {
-      const li = document.createElement('li');
-      const sets = e.s && e.r ? `<span class="h-sets">${e.s}×${e.r}</span>` : '<span class="h-sets"></span>';
-      li.innerHTML = `<span class="h-date">${fmtD(e.d)}</span>${sets}<span class="h-weight">${Viz.fmt(e.w)} <span class="u">кг</span></span>`;
-      hist.appendChild(li);
+    const first = Math.max(0, currentLog.length - 8);
+    for (let i = currentLog.length - 1; i >= first; i--) {
+      hist.appendChild(i === editIdx ? buildEditRow(i) : buildViewRow(i));
     }
+  }
+
+  function buildViewRow(i) {
+    const e = currentLog[i];
+    const li = document.createElement('li');
+    const sets = e.s && e.r ? `<span class="h-sets">${e.s}×${e.r}</span>` : '<span class="h-sets"></span>';
+    li.innerHTML = `<span class="h-date">${fmtD(e.d)}</span>${sets}` +
+      `<span class="h-weight">${Viz.fmt(e.w)} <span class="u">кг</span></span>` +
+      `<svg class="h-pen" viewBox="0 0 24 24" width="13" height="13"><path d="M4 20l1-4L16.5 4.5a2.12 2.12 0 013 3L8 19l-4 1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>`;
+    li.addEventListener('click', () => {
+      editIdx = i;
+      renderLog();
+      haptic.light();
+    });
+    return li;
+  }
+
+  function buildEditRow(i) {
+    const e = currentLog[i];
+    const li = document.createElement('li');
+    li.className = 'edit-row';
+    li.innerHTML =
+      `<input class="he-w" type="number" inputmode="decimal" enterkeyhint="done" value="${e.w}" aria-label="Вес">` +
+      `<input class="he-s" type="number" inputmode="numeric" enterkeyhint="done" value="${e.s || ''}" placeholder="—" aria-label="Подходы">` +
+      `<span class="sets-x-sm">×</span>` +
+      `<input class="he-r" type="number" inputmode="numeric" enterkeyhint="done" value="${e.r || ''}" placeholder="—" aria-label="Повторы">` +
+      `<button class="btn-mini he-del" aria-label="Удалить запись"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 7h14M10 7V5h4v2M8 7l1 12h6l1-12m-6 3v6m4-6v6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` +
+      `<button class="btn-mini he-save" aria-label="Сохранить запись"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+
+    li.querySelector('.he-save').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const w = parseFloat(li.querySelector('.he-w').value);
+      const s = parseInt(li.querySelector('.he-s').value, 10);
+      const r = parseInt(li.querySelector('.he-r').value, 10);
+      if (w > 0) e.w = Math.round(w * 100) / 100;
+      if (s > 0) e.s = s; else delete e.s;
+      if (r > 0) e.r = r; else delete e.r;
+      editIdx = -1;
+      saveLog();
+      renderLog();
+      haptic.success();
+    });
+
+    li.querySelector('.he-del').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      confirmDialog(`Удалить запись от ${fmtD(e.d)}?`, (ok) => {
+        if (!ok) return;
+        currentLog.splice(i, 1);
+        editIdx = -1;
+        saveLog();
+        renderLog();
+        haptic.medium();
+      });
+    });
+
+    return li;
   }
 
   function recordEntry() {
@@ -222,8 +295,8 @@
     if (r > 0) entry.r = r;
     currentLog.push(entry);
     if (currentLog.length > LOG_LIMIT) currentLog = currentLog.slice(-LOG_LIMIT);
-    Storage.set(keyLog(current.id), currentLog);
-    Storage.flush();
+    editIdx = -1;
+    saveLog();
     renderLog();
     haptic.success();
     const btn = $('btn-record');
@@ -322,8 +395,21 @@
     zone.addEventListener('pointercancel', end);
   })();
 
-  /* ---------- Экран добавления ---------- */
+  /* ---------- Экран добавления / редактирования ---------- */
   let pickedType = 'barbell';
+  let editing = null; // упражнение в режиме редактирования (null — создание нового)
+
+  function openAddScreen(ex) {
+    editing = ex || null;
+    $('add-title').textContent = editing ? 'Изменить упражнение' : 'Новое упражнение';
+    $('btn-create').textContent = editing ? 'Сохранить' : 'Добавить упражнение';
+    $('inp-name').value = editing ? editing.name : '';
+    pickedType = editing ? editing.type : 'barbell';
+    $('inp-step').value = editing ? editing.step : VIZ_TYPES.barbell.defaultStep;
+    $('inp-bar').value = editing && editing.barWeight != null ? editing.barWeight : 20;
+    buildTypePicker();
+    showScreen('add');
+  }
 
   function buildTypePicker() {
     const picker = $('type-picker');
@@ -354,6 +440,27 @@
     }
     const cfg = VIZ_TYPES[pickedType];
     const step = parseFloat($('inp-step').value) || cfg.defaultStep;
+
+    if (editing) {
+      editing.name = name;
+      editing.type = pickedType;
+      editing.step = step;
+      if (pickedType === 'barbell') {
+        editing.barWeight = parseFloat($('inp-bar').value);
+        if (!(editing.barWeight >= 0)) editing.barWeight = 20;
+      } else {
+        delete editing.barWeight;
+      }
+      const b = bounds(editing);
+      editing.weight = Math.min(b.max, Math.max(b.min, editing.weight));
+      const ex = editing;
+      editing = null;
+      saveExercises();
+      haptic.success();
+      openExercise(ex);
+      return;
+    }
+
     const ex = {
       id: 'x' + Date.now().toString(36),
       name,
@@ -374,20 +481,101 @@
   }
 
   $('btn-create').addEventListener('click', createExercise);
-  $('btn-add').addEventListener('click', () => {
-    $('inp-name').value = '';
-    pickedType = 'barbell';
-    $('inp-step').value = VIZ_TYPES.barbell.defaultStep;
-    $('inp-bar').value = 20;
-    buildTypePicker();
-    showScreen('add');
-  });
+  $('btn-add').addEventListener('click', () => openAddScreen(null));
+  $('btn-edit').addEventListener('click', () => { if (current) openAddScreen(current); });
+
+  /* ---------- Таймер отдыха (не привязан к «Записать») ---------- */
+  (() => {
+    const MIN = 30, MAX = 600, DEF = 120;
+    let duration = DEF;      // выбранная длительность (персистится)
+    let total = 0;           // длительность текущего отсчёта
+    let endAt = 0;
+    let interval = null;
+    let doneTimeout = null;
+
+    const label = $('timer-label');
+    const fill = $('timer-fill');
+    const btn = $('timer-main');
+    const running = () => interval !== null;
+
+    const fmtT = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+    Storage.get('rest-timer', DEF).then((v) => {
+      if (v >= MIN && v <= MAX) duration = v;
+      if (!running()) showIdle();
+    });
+
+    function showIdle() {
+      clearInterval(interval); interval = null;
+      clearTimeout(doneTimeout); doneTimeout = null;
+      btn.classList.remove('running', 'done');
+      fill.style.width = '0';
+      label.textContent = '⏱ ' + fmtT(duration);
+    }
+
+    function tick() {
+      const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+      label.textContent = fmtT(left);
+      fill.style.width = `${Math.min(100, 100 * (1 - left / total))}%`;
+      if (left <= 0) finish();
+    }
+
+    function start() {
+      clearTimeout(doneTimeout); doneTimeout = null;
+      btn.classList.remove('done');
+      btn.classList.add('running');
+      total = duration;
+      endAt = Date.now() + total * 1000;
+      interval = setInterval(tick, 250);
+      tick();
+      haptic.medium();
+    }
+
+    function finish() {
+      clearInterval(interval); interval = null;
+      btn.classList.remove('running');
+      btn.classList.add('done');
+      fill.style.width = '100%';
+      label.textContent = 'Отдых окончен';
+      haptic.success();
+      try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (_) {}
+      doneTimeout = setTimeout(showIdle, 4000);
+    }
+
+    btn.addEventListener('click', () => {
+      if (running()) { showIdle(); haptic.light(); } // отмена
+      else if (btn.classList.contains('done')) showIdle();
+      else start();
+    });
+
+    function adjust(delta) {
+      if (running()) {
+        // на ходу двигаем текущий отсчёт
+        endAt += delta * 1000;
+        total = Math.max(1, total + delta);
+        if (endAt < Date.now()) endAt = Date.now();
+        tick();
+      } else {
+        duration = Math.min(MAX, Math.max(MIN, duration + delta));
+        Storage.setDebounced('rest-timer', duration);
+        showIdle();
+      }
+      haptic.light();
+    }
+    $('timer-minus').addEventListener('click', () => adjust(-30));
+    $('timer-plus').addEventListener('click', () => adjust(+30));
+  })();
 
   /* ---------- Клавиатура: тап вне поля ввода снимает фокус ---------- */
   document.addEventListener('pointerdown', (ev) => {
     const focused = document.activeElement;
     if (focused && focused.tagName === 'INPUT' && !ev.target.closest('input, label')) {
       focused.blur();
+    }
+    // тап вне истории закрывает редактируемую запись
+    if (editIdx >= 0 && !ev.target.closest('#history')) {
+      editIdx = -1;
+      renderLog();
     }
   });
   document.addEventListener('keydown', (ev) => {
