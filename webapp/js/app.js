@@ -214,6 +214,7 @@
 
   function recordEntry() {
     if (!current) return;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     const entry = { d: todayISO(), w: current.weight };
     const s = parseInt($('inp-sets').value, 10);
     const r = parseInt($('inp-reps').value, 10);
@@ -380,6 +381,19 @@
     $('inp-bar').value = 20;
     buildTypePicker();
     showScreen('add');
+  });
+
+  /* ---------- Клавиатура: тап вне поля ввода снимает фокус ---------- */
+  document.addEventListener('pointerdown', (ev) => {
+    const focused = document.activeElement;
+    if (focused && focused.tagName === 'INPUT' && !ev.target.closest('input, label')) {
+      focused.blur();
+    }
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && document.activeElement && document.activeElement.tagName === 'INPUT') {
+      document.activeElement.blur();
+    }
   });
 
   /* ---------- Старт ---------- */
