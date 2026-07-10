@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>GymTracker</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Экран: главная -->
+    <section id="screen-home" class="screen">
+      <header class="home-header">
+        <h1>Тренировки</h1>
+        <button id="btn-add" class="btn-icon" aria-label="Добавить упражнение">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div id="home-list">
+        <div id="fav-section" class="list-section">
+          <h2 class="section-title">Избранное</h2>
+          <div id="fav-list" class="card-list"></div>
+        </div>
+        <div id="all-section" class="list-section">
+          <h2 class="section-title">Все упражнения</h2>
+          <div id="all-list" class="card-list"></div>
+        </div>
+        <div id="home-empty" class="empty-state" hidden>
+          <p>Пока нет упражнений.</p>
+          <p class="hint">Нажмите «+», чтобы добавить первое.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Экран: упражнение -->
+    <section id="screen-exercise" class="screen right">
+      <header class="topbar">
+        <button class="btn-icon btn-back" aria-label="Назад">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+        </button>
+        <h1 id="ex-title" class="topbar-title"></h1>
+        <button id="btn-fav" class="btn-icon btn-star" aria-label="В избранное">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path class="star-path" d="M12 3.5l2.47 5.32 5.83.66-4.32 3.97 1.16 5.75L12 16.3l-5.14 2.9 1.16-5.75-4.32-3.97 5.83-.66z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/></svg>
+        </button>
+      </header>
+
+      <div class="ex-body">
+        <div class="viz-wrap">
+          <svg id="viz" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div id="viz-note" class="viz-note"></div>
+        </div>
+
+        <div class="weight-block">
+          <div id="weight-scrub" class="weight-display" title="Потяните в сторону, чтобы изменить">
+            <span id="weight-value">60</span><span class="weight-unit">кг</span>
+          </div>
+          <div class="scrub-hint">тяните число вбок · шаг 2,5 кг</div>
+        </div>
+
+        <div class="stepper">
+          <button id="btn-minus" class="stepper-btn" aria-label="Меньше">−</button>
+          <button id="btn-plus" class="stepper-btn" aria-label="Больше">+</button>
+        </div>
+
+        <div class="sets-row">
+          <label class="sets-field">
+            <input id="inp-sets" type="number" inputmode="numeric" min="1" max="20" placeholder="—">
+            <span>подходы</span>
+          </label>
+          <span class="sets-x">×</span>
+          <label class="sets-field">
+            <input id="inp-reps" type="number" inputmode="numeric" min="1" max="100" placeholder="—">
+            <span>повторы</span>
+          </label>
+        </div>
+
+        <button id="btn-record" class="btn-primary">Записать</button>
+
+        <div id="progress-block" class="progress-block" hidden>
+          <h2 class="section-title">Прогресс</h2>
+          <div id="chart"></div>
+          <ul id="history" class="history"></ul>
+        </div>
+
+        <button id="btn-delete" class="btn-danger-ghost">Удалить упражнение</button>
+      </div>
+    </section>
+
+    <!-- Экран: добавление упражнения -->
+    <section id="screen-add" class="screen right">
+      <header class="topbar">
+        <button class="btn-icon btn-back" aria-label="Назад">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+        </button>
+        <h1 class="topbar-title">Новое упражнение</h1>
+        <span class="btn-icon"></span>
+      </header>
+
+      <div class="add-body">
+        <label class="field">
+          <span class="field-label">Название</span>
+          <input id="inp-name" type="text" maxlength="40" placeholder="Например, жим ногами">
+        </label>
+
+        <div class="field">
+          <span class="field-label">Снаряд</span>
+          <div id="type-picker" class="type-picker"></div>
+        </div>
+
+        <label class="field">
+          <span class="field-label">Шаг веса, кг</span>
+          <input id="inp-step" type="number" inputmode="decimal" min="0.5" step="0.5" value="2.5">
+        </label>
+
+        <label class="field" id="field-bar">
+          <span class="field-label">Вес грифа, кг</span>
+          <input id="inp-bar" type="number" inputmode="decimal" min="0" step="0.5" value="20">
+        </label>
+
+        <button id="btn-create" class="btn-primary">Добавить упражнение</button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/viz.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
