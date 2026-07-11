@@ -10,6 +10,8 @@
     tg.ready();
     tg.expand();
     try { if (tg.isVersionAtLeast('7.7')) tg.disableVerticalSwipes(); } catch (_) {}
+    // Полноэкранный режим (Bot API 8.0+); отступы под системные зоны — в CSS
+    try { if (tg.isVersionAtLeast('8.0') && !tg.isFullscreen) tg.requestFullscreen(); } catch (_) {}
   }
   if (inTg) document.body.classList.add('tg');
 
@@ -196,6 +198,8 @@
     displayed = ex.weight;
     weightValue.textContent = Viz.fmt(ex.weight);
     vizNote.textContent = Viz.render(vizSvg, ex, ex.weight);
+    currentLog = [];
+    renderLog(); // мгновенно спрятать историю прошлого упражнения, пока грузится своя
     loadLog(ex.id);
     showScreen('exercise');
   }
@@ -582,6 +586,15 @@
     if (ev.key === 'Enter' && document.activeElement && document.activeElement.tagName === 'INPUT') {
       document.activeElement.blur();
     }
+  });
+
+  // Поле ввода не должно прятаться под клавиатурой: после её появления
+  // прокручиваем экран так, чтобы поле оказалось по центру видимой области.
+  document.addEventListener('focusin', (ev) => {
+    if (ev.target.tagName !== 'INPUT') return;
+    setTimeout(() => {
+      try { ev.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
+    }, 350);
   });
 
   /* ---------- Старт ---------- */

@@ -37,6 +37,6 @@ const DEFAULT_EXERCISES = [
 /** Сколько записей истории храним на упражнение (лимит CloudStorage — 4096 символов на ключ). */
 const LOG_LIMIT = 60;
 
-/** Ключи хранилища. */
+/** Ключи хранилища. CloudStorage допускает только A-Z, a-z, 0-9, _ и - (двоеточие нельзя!). */
 const KEY_EXERCISES = 'exercises';
-const keyLog = (exerciseId) => 'log:' + exerciseId;
+const keyLog = (exerciseId) => 'log_' + exerciseId;

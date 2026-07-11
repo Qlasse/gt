@@ -136,11 +136,22 @@ const Viz = (() => {
   /* Блочная стопка: пин выбирает вес, блоки сверху «подхватываются».     */
   /* ------------------------------------------------------------------ */
 
-  const STACK = { count: 12, x: 118, w: 104, top: 16, blockH: 13, gap: 3 };
+  const STACK = { x: 118, w: 104, top: 16, areaH: 196, maxBlocks: 25 };
+
+  /** Один блок = шаг упражнения; если блоков выходит слишком много — укрупняем. */
+  function stackLayout(exercise) {
+    const max = VIZ_TYPES.stack.max;
+    let bw = exercise.step > 0 ? exercise.step : 5;
+    let count = Math.ceil(max / bw);
+    while (count > STACK.maxBlocks) { bw *= 2; count = Math.ceil(max / bw); }
+    const unit = STACK.areaH / count;
+    return { bw, count, unit, blockH: unit * 0.8, };
+  }
 
   function buildStackStatic(svg, state) {
-    svg.setAttribute('viewBox', '0 0 340 220');
-    const bottom = STACK.top + STACK.count * (STACK.blockH + STACK.gap) + 4;
+    svg.setAttribute('viewBox', '0 0 340 224');
+    const { count, unit, blockH } = state.layout;
+    const bottom = STACK.top + count * unit + 4;
     // Направляющие
     svg.appendChild(el('rect', { x: STACK.x + 18, y: 6, width: 3, height: bottom, rx: 1.5 }, 'metal'));
     svg.appendChild(el('rect', { x: STACK.x + STACK.w - 21, y: 6, width: 3, height: bottom, rx: 1.5 }, 'metal'));
@@ -148,13 +159,13 @@ const Viz = (() => {
     svg.appendChild(el('rect', { x: STACK.x + 8, y: 4, width: STACK.w - 16, height: 5, rx: 2.5 }, 'metal'));
 
     state.blocks = [];
-    for (let i = 0; i < STACK.count; i++) {
+    for (let i = 0; i < count; i++) {
       const b = el('rect', {
         x: STACK.x,
-        y: STACK.top + i * (STACK.blockH + STACK.gap),
+        y: STACK.top + i * unit,
         width: STACK.w,
-        height: STACK.blockH,
-        rx: 4,
+        height: blockH,
+        rx: Math.min(4, blockH / 2),
       }, 'stack-block');
       svg.appendChild(b);
       state.blocks.push(b);
@@ -168,17 +179,19 @@ const Viz = (() => {
   }
 
   function renderStack(svg, state, exercise, weight) {
-    if (!state.built) {
+    const layout = stackLayout(exercise);
+    if (!state.built || state.layout.count !== layout.count || state.layout.bw !== layout.bw) {
+      state.layout = layout;
       svg.replaceChildren();
       buildStackStatic(svg, state);
       state.built = true;
     }
-    const max = VIZ_TYPES.stack.max;
-    const k = Math.min(STACK.count, Math.max(1, Math.round((weight / max) * STACK.count)));
+    const { bw, count, unit, blockH } = state.layout;
+    const k = Math.min(count, Math.max(1, Math.round(weight / bw)));
     state.blocks.forEach((b, i) => b.classList.toggle('on', i < k));
-    const y = STACK.top + (k - 1) * (STACK.blockH + STACK.gap) + STACK.blockH / 2;
+    const y = STACK.top + (k - 1) * unit + blockH / 2;
     state.pin.style.transform = `translateY(${y}px)`;
-    return '';
+    return `${k} × ${fmt(bw)} кг`;
   }
 
   /* ------------------------------------------------------------------ */

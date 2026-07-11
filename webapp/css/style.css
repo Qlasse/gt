@@ -68,7 +68,9 @@ body {
   overflow-x: hidden;
   transform: translateX(0);
   transition: transform 0.32s var(--ease), opacity 0.32s var(--ease);
-  padding-bottom: env(safe-area-inset-bottom);
+  /* Отступы под системные зоны Telegram в полноэкранном режиме (Bot API 8.0+) */
+  padding-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tg-safe-area-inset-bottom, 0px));
 }
 .screen.right   { transform: translateX(102%); }
 .screen.behind  { transform: translateX(-18%); opacity: 0.6; pointer-events: none; }

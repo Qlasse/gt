@@ -15,36 +15,30 @@ const Storage = (() => {
 
   const LS_PREFIX = 'gymtracker:';
 
-  function cloudGet(key) {
+  // Обёртка: облачный вызов не должен ни бросить исключение, ни зависнуть
+  // (например, из-за невалидного ключа) — через 3 c промис резолвится сам.
+  function cloudCall(fn) {
     return new Promise((resolve) => {
-      try {
-        tg.CloudStorage.getItem(key, (err, value) => {
-          resolve(err ? null : value || null);
-        });
-      } catch (_) {
-        resolve(null);
-      }
+      let settled = false;
+      const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+      setTimeout(() => done(null), 3000);
+      try { fn(done); } catch (_) { done(null); }
     });
+  }
+
+  function cloudGet(key) {
+    return cloudCall((done) =>
+      tg.CloudStorage.getItem(key, (err, value) => done(err ? null : value || null)));
   }
 
   function cloudSet(key, value) {
-    return new Promise((resolve) => {
-      try {
-        tg.CloudStorage.setItem(key, value, () => resolve());
-      } catch (_) {
-        resolve();
-      }
-    });
+    return cloudCall((done) =>
+      tg.CloudStorage.setItem(key, value, () => done()));
   }
 
   function cloudRemove(key) {
-    return new Promise((resolve) => {
-      try {
-        tg.CloudStorage.removeItem(key, () => resolve());
-      } catch (_) {
-        resolve();
-      }
-    });
+    return cloudCall((done) =>
+      tg.CloudStorage.removeItem(key, () => done()));
   }
 
   async function getRaw(key) {
