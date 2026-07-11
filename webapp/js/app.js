@@ -189,10 +189,12 @@
 
   let displayed = 0;       // отображаемое число (для твина)
   let tweenRaf = null;
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
 
   function renderWeight(animate = true) {
     const target = current.weight;
     vizNote.textContent = Viz.render(vizSvg, current, target);
+    if (reducedMotion && reducedMotion.matches) animate = false;
     if (!animate || Math.abs(target - displayed) < 0.001) {
       displayed = target;
       weightValue.textContent = Viz.fmt(target);

@@ -35,6 +35,14 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Пользователь попросил систему убрать анимации — уважаем */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
 html, body {
   height: 100%;
   overscroll-behavior: none;
