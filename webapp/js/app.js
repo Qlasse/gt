@@ -600,8 +600,17 @@
     $('timer-plus').addEventListener('click', () => adjust(+30));
   })();
 
-  /* ---------- Клавиатура: тап вне поля ввода снимает фокус ---------- */
+  /* ---------- Клавиатура: снимаем фокус только по ТАПУ вне поля ----------
+     Свайп (прокрутка) не должен прятать клавиатуру: отличаем тап от свайпа
+     по смещению пальца между pointerdown и pointerup. */
+  let tapX = 0, tapY = 0;
   document.addEventListener('pointerdown', (ev) => {
+    tapX = ev.clientX;
+    tapY = ev.clientY;
+  });
+  document.addEventListener('pointerup', (ev) => {
+    const isTap = Math.hypot(ev.clientX - tapX, ev.clientY - tapY) < 10;
+    if (!isTap) return;
     const focused = document.activeElement;
     if (focused && focused.tagName === 'INPUT' && !ev.target.closest('input, label')) {
       focused.blur();
@@ -635,7 +644,17 @@
     setTimeout(() => ensureFieldVisible('smooth'), 400);
     setTimeout(() => ensureFieldVisible('auto'), 800);
   });
-  document.addEventListener('focusout', () => { kbFocused = null; });
+  document.addEventListener('focusout', () => {
+    kbFocused = null;
+    // Telegram может сдвинуть WebView вверх под клавиатуру и не вернуть назад —
+    // после закрытия клавиатуры возвращаем окно на место.
+    setTimeout(() => {
+      if (!document.activeElement || document.activeElement.tagName !== 'INPUT') {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+      }
+    }, 120);
+  });
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => setTimeout(() => ensureFieldVisible('auto'), 60));
   }

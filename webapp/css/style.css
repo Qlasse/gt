@@ -70,9 +70,12 @@ body {
   overflow-x: hidden;
   transform: translateX(0);
   transition: transform 0.32s var(--ease), opacity 0.32s var(--ease);
-  /* Отступы под системные зоны Telegram в полноэкранном режиме (Bot API 8.0+) */
-  padding-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tg-safe-area-inset-bottom, 0px));
+}
+
+/* Отступ под системные зоны Telegram (fullscreen) несут закреплённые шапки */
+:root {
+  --safe-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
 }
 .screen.right   { transform: translateX(102%); }
 .screen.behind  { transform: translateX(-18%); opacity: 0.6; pointer-events: none; }
@@ -82,7 +85,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px 8px;
+  padding: calc(14px + var(--safe-top)) 20px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
 }
 .home-header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
 
@@ -90,9 +97,17 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 4px;
+  padding: calc(8px + var(--safe-top)) 12px 6px;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
 }
+
+/* Внутри Telegram «назад» — нативная кнопка, HTML-стрелка не нужна */
+body.tg .btn-back { display: none; }
+body.tg .topbar-title { text-align: left; padding-left: 6px; }
 .topbar-title {
   flex: 1;
   text-align: center;
