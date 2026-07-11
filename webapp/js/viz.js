@@ -138,7 +138,7 @@ const Viz = (() => {
   /* Блочная стопка: пин выбирает вес, блоки сверху «подхватываются».     */
   /* ------------------------------------------------------------------ */
 
-  const STACK = { x: 118, w: 104, top: 16, areaH: 196, maxBlocks: 25 };
+  const STACK = { x: 118, w: 104, top: 16, areaH: 196, maxBlocks: 30 };
 
   /** Один блок = шаг упражнения; если блоков выходит слишком много — укрупняем. */
   function stackLayout(exercise) {
@@ -305,7 +305,14 @@ const Viz = (() => {
     syncPeg(state.gPlates, plates);
     if (weight <= 0) return 'без дисков';
     if (rest > 0) return `диски ${fmt(weight - rest)} кг, остаток ${fmt(rest)} кг`;
-    return `диски: ${plates.map((p) => fmt(p.kg)).join(' + ')}`;
+    // одинаковые номиналы группируем: «3×25 + 5», а не «25 + 25 + 25 + 5»
+    const parts = [];
+    for (const p of plates) {
+      const last = parts[parts.length - 1];
+      if (last && last.kg === p.kg) last.n++;
+      else parts.push({ kg: p.kg, n: 1 });
+    }
+    return 'диски: ' + parts.map((p) => (p.n > 1 ? `${p.n}×${fmt(p.kg)}` : fmt(p.kg))).join(' + ');
   }
 
   /* ------------------------------------------------------------------ */
@@ -341,7 +348,8 @@ const Viz = (() => {
       state.built = true;
     }
     const { max } = VIZ_TYPES.body;
-    const t = Math.min(1, Math.max(0, weight / max));
+    // sqrt: типичные +10–20 кг остаются заметными при высоком потолке
+    const t = Math.sqrt(Math.min(1, Math.max(0, weight / max)));
     if (weight <= 0) {
       state.load.style.opacity = 0;
       state.load.style.transform = 'scale(0.3)';
