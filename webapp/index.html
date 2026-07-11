@@ -14,9 +14,16 @@
     <section id="screen-home" class="screen">
       <header class="home-header">
         <h1>Тренировки</h1>
-        <button id="btn-add" class="btn-icon" aria-label="Добавить упражнение">
-          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </button>
+        <div class="header-actions">
+          <button id="btn-settings" class="btn-icon" aria-label="Настройки">
+            <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 7h8M19 7h1M4 17h1M12 17h8"/><circle cx="15.5" cy="7" r="2.5"/><circle cx="8.5" cy="17" r="2.5"/>
+            </svg>
+          </button>
+          <button id="btn-add" class="btn-icon" aria-label="Добавить упражнение">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
       </header>
       <div id="home-list">
         <div id="fav-section" class="list-section">
@@ -135,6 +142,52 @@
       </div>
     </section>
 
+    <!-- Экран: настройки -->
+    <section id="screen-settings" class="screen right">
+      <header class="topbar">
+        <button class="btn-icon btn-back" aria-label="Назад">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+        </button>
+        <h1 class="topbar-title">Настройки</h1>
+        <span class="btn-icon"></span>
+      </header>
+
+      <div class="settings-body">
+        <div class="field">
+          <span class="field-label">Память истории</span>
+          <div class="mem-card">
+            <div class="mem-bar"><div id="mem-fill"></div></div>
+            <div id="mem-text" class="mem-text">—</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Данные</span>
+          <button id="btn-export" class="settings-row">
+            Скопировать данные <span class="row-hint">резервная копия в JSON</span>
+          </button>
+          <label class="settings-row">
+            <span>Вибрация</span>
+            <input id="tgl-haptics" class="switch" type="checkbox" checked>
+          </label>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Очистка</span>
+          <button id="btn-clear-old" class="settings-row">
+            Очистить старые записи <span class="row-hint">оставить 20 последних</span>
+          </button>
+          <button id="btn-reset-progress" class="settings-row danger">
+            Сбросить прогресс <span class="row-hint">упражнения останутся</span>
+          </button>
+          <button id="btn-reset-all" class="settings-row danger">Сбросить всё</button>
+        </div>
+
+        <div id="about-line" class="about"></div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" hidden></div>
   </div>
 
   <script src="js/storage.js"></script>

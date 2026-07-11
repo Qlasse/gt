@@ -70,6 +70,18 @@ const Storage = (() => {
     localStorage.removeItem(LS_PREFIX + key);
   }
 
+  /** Все ключи приложения (для полного сброса). */
+  async function keys() {
+    if (useCloud) {
+      const list = await cloudCall((done) =>
+        tg.CloudStorage.getKeys((err, k) => done(err ? [] : k || [])));
+      return list || [];
+    }
+    return Object.keys(localStorage)
+      .filter((k) => k.startsWith(LS_PREFIX))
+      .map((k) => k.slice(LS_PREFIX.length));
+  }
+
   // Отложенная запись: при скрабе веса не спамим CloudStorage — пишем не чаще
   // чем раз в 800 мс на ключ, последнее значение всегда доезжает.
   const pending = new Map();
@@ -92,5 +104,5 @@ const Storage = (() => {
     pending.clear();
   }
 
-  return { get, set, remove, setDebounced, flush, useCloud };
+  return { get, set, remove, keys, setDebounced, flush, useCloud };
 })();

@@ -15,10 +15,11 @@
   }
   if (inTg) document.body.classList.add('tg');
 
+  let hapticsOn = true; // настройка «Вибрация», грузится из хранилища на старте
   const haptic = {
-    light()   { try { tg && tg.HapticFeedback.impactOccurred('light'); } catch (_) {} },
-    medium()  { try { tg && tg.HapticFeedback.impactOccurred('medium'); } catch (_) {} },
-    success() { try { tg && tg.HapticFeedback.notificationOccurred('success'); } catch (_) {} },
+    light()   { try { hapticsOn && tg && tg.HapticFeedback.impactOccurred('light'); } catch (_) {} },
+    medium()  { try { hapticsOn && tg && tg.HapticFeedback.impactOccurred('medium'); } catch (_) {} },
+    success() { try { hapticsOn && tg && tg.HapticFeedback.notificationOccurred('success'); } catch (_) {} },
   };
 
   const confirmDialog = (message, cb) => {
@@ -39,7 +40,23 @@
     home: $('screen-home'),
     exercise: $('screen-exercise'),
     add: $('screen-add'),
+    settings: $('screen-settings'),
   };
+
+  /* Тост-уведомление */
+  let toastTimer = null;
+  function showToast(text) {
+    const t = $('toast');
+    clearTimeout(toastTimer);
+    t.textContent = text;
+    t.hidden = false;
+    requestAnimationFrame(() => t.classList.add('show'));
+    setTimeout(() => t.classList.add('show'), 50); // страховка без rAF
+    toastTimer = setTimeout(() => {
+      t.classList.remove('show');
+      setTimeout(() => { t.hidden = true; }, 300);
+    }, 2600);
+  }
 
   const todayISO = () => {
     const d = new Date();
@@ -332,6 +349,9 @@
     saveLog();
     renderLog();
     haptic.success();
+    if (currentLog.length >= LOG_LIMIT - 5) {
+      showToast(`История заполнена на ${currentLog.length}/${LOG_LIMIT} — старые записи начнут удаляться. Очистка — в настройках.`);
+    }
     const btn = $('btn-record');
     btn.classList.remove('saved');
     void btn.offsetWidth;
@@ -518,6 +538,102 @@
   $('btn-add').addEventListener('click', () => openAddScreen(null));
   $('btn-edit').addEventListener('click', () => { if (current) openAddScreen(current); });
 
+  /* ---------- Настройки ---------- */
+  const KEEP_ON_CLEANUP = 20;
+
+  async function allLogs() {
+    const logs = await Promise.all(exercises.map((e) => Storage.get(keyLog(e.id), [])));
+    return logs.map((l) => l || []);
+  }
+
+  async function renderSettings() {
+    const logs = await allLogs();
+    let total = 0, maxLen = 0, maxName = '';
+    logs.forEach((l, i) => {
+      total += l.length;
+      if (l.length > maxLen) { maxLen = l.length; maxName = exercises[i].name; }
+    });
+    const pct = Math.min(100, Math.round((maxLen / LOG_LIMIT) * 100));
+    $('mem-fill').style.width = pct + '%';
+    $('mem-fill').classList.toggle('warn', pct >= 85);
+    $('mem-text').textContent = total === 0
+      ? 'Записей пока нет'
+      : `Всего ${total} записей · больше всего у «${maxName}»: ${maxLen} из ${LOG_LIMIT}`;
+    $('about-line').textContent =
+      `GymTracker · данные: ${Storage.useCloud ? 'Telegram Cloud (привязаны к аккаунту)' : 'localStorage браузера'}`;
+  }
+
+  $('btn-settings').addEventListener('click', () => {
+    renderSettings();
+    showScreen('settings');
+  });
+
+  $('btn-export').addEventListener('click', async () => {
+    const logs = await allLogs();
+    const dump = { app: 'gymtracker', exported: todayISO(), exercises, logs: {} };
+    exercises.forEach((e, i) => { dump.logs[e.id] = logs[i]; });
+    const json = JSON.stringify(dump);
+    try {
+      await navigator.clipboard.writeText(json);
+      showToast('Данные скопированы в буфер обмена');
+    } catch (_) {
+      // fallback для WebView без clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = json;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      showToast(ok ? 'Данные скопированы в буфер обмена' : 'Не удалось скопировать');
+    }
+    haptic.success();
+  });
+
+  $('tgl-haptics').addEventListener('change', (ev) => {
+    hapticsOn = ev.target.checked;
+    Storage.set('haptics', hapticsOn);
+    haptic.medium(); // ощутимо только при включении — удобная проверка
+  });
+
+  $('btn-clear-old').addEventListener('click', () => {
+    confirmDialog(`Оставить только ${KEEP_ON_CLEANUP} последних записей в каждом упражнении?`, async (ok) => {
+      if (!ok) return;
+      const logs = await allLogs();
+      let removed = 0;
+      for (let i = 0; i < exercises.length; i++) {
+        if (logs[i].length > KEEP_ON_CLEANUP) {
+          removed += logs[i].length - KEEP_ON_CLEANUP;
+          await Storage.set(keyLog(exercises[i].id), logs[i].slice(-KEEP_ON_CLEANUP));
+        }
+      }
+      showToast(removed > 0 ? `Удалено старых записей: ${removed}` : 'Старых записей нет — всё компактно');
+      haptic.success();
+      renderSettings();
+    });
+  });
+
+  $('btn-reset-progress').addEventListener('click', () => {
+    confirmDialog('Удалить всю историю записей? Упражнения и текущие веса останутся.', async (ok) => {
+      if (!ok) return;
+      await Promise.all(exercises.map((e) => Storage.remove(keyLog(e.id))));
+      currentLog = [];
+      showToast('История очищена');
+      haptic.success();
+      renderSettings();
+    });
+  });
+
+  $('btn-reset-all').addEventListener('click', () => {
+    confirmDialog('Сбросить всё? Упражнения, история и настройки будут удалены безвозвратно.', async (ok) => {
+      if (!ok) return;
+      const keys = await Storage.keys();
+      await Promise.all(keys.map((k) => Storage.remove(k)));
+      showToast('Все данные сброшены');
+      haptic.success();
+      setTimeout(() => location.reload(), 900);
+    });
+  });
+
   /* ---------- Таймер отдыха (не привязан к «Записать») ---------- */
   (() => {
     const MIN = 30, MAX = 600, DEF = 120;
@@ -666,6 +782,10 @@
   window.addEventListener('beforeunload', () => Storage.flush());
 
   (async () => {
+    Storage.get('haptics', true).then((v) => {
+      hapticsOn = v !== false;
+      $('tgl-haptics').checked = hapticsOn;
+    });
     const stored = await Storage.get(KEY_EXERCISES);
     if (Array.isArray(stored) && stored.length > 0) {
       exercises = stored;
