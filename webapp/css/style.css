@@ -68,6 +68,7 @@ body {
   background: var(--bg);
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   transform: translateX(0);
   transition: transform 0.32s var(--ease), opacity 0.32s var(--ease);
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tg-safe-area-inset-bottom, 0px));
@@ -90,6 +91,7 @@ body {
   top: 0;
   z-index: 10;
   background: var(--bg);
+  border-bottom: 1px solid var(--separator);
 }
 .home-header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
 
@@ -103,6 +105,7 @@ body {
   top: 0;
   z-index: 10;
   background: var(--bg);
+  border-bottom: 1px solid var(--separator);
 }
 
 /* Внутри Telegram «назад» — нативная кнопка, HTML-стрелка не нужна */
@@ -187,6 +190,16 @@ body.tg .topbar-title { text-align: left; padding-left: 6px; }
 
 .empty-state { text-align: center; padding: 64px 24px; color: var(--text); }
 .empty-state .hint { color: var(--hint); margin-top: 6px; font-size: 14px; }
+
+.credit {
+  margin-top: auto;
+  padding: 24px 0 12px;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #f5b942;
+  opacity: 0.85;
+}
 
 /* ---------- Экран упражнения ---------- */
 .ex-body {
