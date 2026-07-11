@@ -23,6 +23,29 @@ const VIZ_TYPES = {
     max: 80,
     defaultWeight: 14,
   },
+  plates: {
+    label: 'Тренажёр',
+    defaultStep: 5,
+    min: 0,
+    max: 300,
+    defaultWeight: 40,
+  },
+  body: {
+    label: 'Свой вес',
+    defaultStep: 2.5,
+    min: 0,
+    max: 100,
+    defaultWeight: 0,
+  },
+  kettlebell: {
+    label: 'Гиря',
+    defaultStep: 4,
+    min: 4,
+    max: 48,
+    defaultWeight: 16,
+    // Вес шагает по стандартным номиналам гирь, а не арифметически
+    nominals: [4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40, 48],
+  },
 };
 
 const DEFAULT_EXERCISES = [
@@ -32,6 +55,9 @@ const DEFAULT_EXERCISES = [
   { id: 'latpull',  name: 'Тяга верхнего блока',       type: 'stack',    favorite: true,  step: 5,   weight: 50 },
   { id: 'row',      name: 'Тяга горизонтального блока', type: 'stack',   favorite: false, step: 5,   weight: 45 },
   { id: 'dbpress',  name: 'Жим гантелей',              type: 'dumbbell', favorite: false, step: 2,   weight: 16 },
+  { id: 'legpress', name: 'Жим ногами',                type: 'plates',   favorite: false, step: 5,   weight: 80 },
+  { id: 'pullup',   name: 'Подтягивания с весом',      type: 'body',     favorite: false, step: 2.5, weight: 0 },
+  { id: 'swing',    name: 'Свинг гирей',               type: 'kettlebell', favorite: false, step: 4, weight: 16 },
 ];
 
 /** Сколько записей истории храним на упражнение (лимит CloudStorage — 4096 символов на ключ). */

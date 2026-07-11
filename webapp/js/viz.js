@@ -61,6 +61,8 @@ const Viz = (() => {
   function animateEnter(node) {
     node.classList.add('enter');
     requestAnimationFrame(() => requestAnimationFrame(() => node.classList.remove('enter')));
+    // Страховка на случай приторможенного rAF в фоновом WebView
+    setTimeout(() => node.classList.remove('enter'), 120);
   }
 
   function animateExit(node) {
@@ -240,6 +242,158 @@ const Viz = (() => {
   }
 
   /* ------------------------------------------------------------------ */
+  /* Тренажёр с дисками: наклонный штырь, диски нанизываются целиком.     */
+  /* ------------------------------------------------------------------ */
+
+  const PEG = { x0: 27, maxStack: 168, gap: 1.5, hScale: 0.62 };
+
+  function buildPlatesStatic(svg, state) {
+    svg.setAttribute('viewBox', '0 0 340 185');
+    // Стойка и опора
+    svg.appendChild(el('rect', { x: 100, y: 68, width: 9, height: 110, rx: 4 }, 'metal'));
+    svg.appendChild(el('rect', { x: 84, y: 174, width: 62, height: 5, rx: 2.5 }, 'metal'));
+    // Рычаг с шарниром
+    const arm = el('g', { transform: 'translate(104.5,72) rotate(-8)' });
+    arm.appendChild(el('rect', { x: 4, y: -3.5, width: 202, height: 7, rx: 3.5 }, 'metal'));
+    arm.appendChild(el('rect', { x: 20, y: -21, width: 5, height: 42, rx: 2 }, 'metal'));
+    state.gPlates = el('g');
+    arm.appendChild(state.gPlates);
+    svg.appendChild(arm);
+    svg.appendChild(el('circle', { cx: 104.5, cy: 72, r: 6 }, 'metal'));
+  }
+
+  /** Диски вдоль штыря (аналог syncSide, но одна стопка и свои размеры). */
+  function syncPeg(group, plates) {
+    const natural = plates.reduce((s, p) => s + p.w + PEG.gap, 0);
+    const squeeze = natural > PEG.maxStack ? PEG.maxStack / natural : 1;
+
+    const existing = Array.from(group.children).filter((n) => !n.__exiting);
+    let common = 0;
+    while (common < existing.length && common < plates.length &&
+           existing[common].__kg === plates[common].kg) common++;
+    for (let i = existing.length - 1; i >= common; i--) {
+      existing[i].__exiting = true;
+      animateExit(existing[i]);
+    }
+
+    let offset = 0;
+    for (let i = 0; i < plates.length; i++) {
+      const p = plates[i];
+      const w = p.w * squeeze;
+      const h = p.h * PEG.hScale;
+      const x = PEG.x0 + offset;
+      if (i < common) {
+        existing[i].setAttribute('x', x);
+        existing[i].setAttribute('width', w);
+      } else {
+        const node = el('rect', { x, width: w, y: -h / 2, height: h, rx: 3, fill: p.color }, 'plate');
+        node.__kg = p.kg;
+        group.appendChild(node);
+        animateEnter(node);
+      }
+      offset += w + PEG.gap * squeeze;
+    }
+  }
+
+  function renderPlates(svg, state, exercise, weight) {
+    if (!state.built) {
+      svg.replaceChildren();
+      buildPlatesStatic(svg, state);
+      state.built = true;
+    }
+    const { plates, rest } = platesForSide(Math.max(0, weight));
+    syncPeg(state.gPlates, plates);
+    if (weight <= 0) return 'без дисков';
+    if (rest > 0) return `диски ${fmt(weight - rest)} кг, остаток ${fmt(rest)} кг`;
+    return `диски: ${plates.map((p) => fmt(p.kg)).join(' + ')}`;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Свой вес + отягощение: атлет на турнике, груз на поясе растёт.       */
+  /* ------------------------------------------------------------------ */
+
+  function buildBodyStatic(svg, state) {
+    svg.setAttribute('viewBox', '0 0 340 175');
+    // Турник
+    svg.appendChild(el('rect', { x: 98, y: 12, width: 144, height: 5, rx: 2.5 }, 'metal'));
+    // Силуэт: руки, голова, корпус, ноги
+    svg.appendChild(el('path', { d: 'M120 17 L160 52 M220 17 L180 52' }, 'sil'));
+    svg.appendChild(el('circle', { cx: 170, cy: 42, r: 10 }, 'sil-fill'));
+    svg.appendChild(el('path', { d: 'M170 54 L170 103' }, 'sil sil-torso'));
+    svg.appendChild(el('path', { d: 'M170 103 L156 148 M170 103 L184 148' }, 'sil'));
+    // Груз на поясе (появляется при весе > 0)
+    const g = el('g', {}, 'plate');
+    g.appendChild(el('rect', { x: 168.5, y: 96, width: 3, height: 22, rx: 1.5 }, 'metal'));
+    const disc = el('circle', { cx: 170, cy: 128, r: 20 });
+    disc.style.fill = 'var(--accent)';
+    g.appendChild(disc);
+    const hole = el('circle', { cx: 170, cy: 128, r: 4 });
+    hole.style.fill = 'var(--bg)';
+    g.appendChild(hole);
+    svg.appendChild(g);
+    state.load = g;
+  }
+
+  function renderBody(svg, state, exercise, weight) {
+    if (!state.built) {
+      svg.replaceChildren();
+      buildBodyStatic(svg, state);
+      state.built = true;
+    }
+    const { max } = VIZ_TYPES.body;
+    const t = Math.min(1, Math.max(0, weight / max));
+    if (weight <= 0) {
+      state.load.style.opacity = 0;
+      state.load.style.transform = 'scale(0.3)';
+      return 'собственный вес';
+    }
+    state.load.style.opacity = 1;
+    state.load.style.transform = `scale(${(0.45 + 0.55 * t).toFixed(3)})`;
+    return `свой вес + ${fmt(weight)} кг`;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Гиря: размер и цвет по стандартному номиналу.                        */
+  /* ------------------------------------------------------------------ */
+
+  const KB_COLORS = { 8: '#c56b8c', 12: '#4a7dbd', 16: '#d3a93c', 20: '#7d6bb5', 24: '#579e60', 28: '#cf8b4a', 32: '#c9564f' };
+
+  function buildKettlebellStatic(svg, state) {
+    svg.setAttribute('viewBox', '0 0 340 175');
+    const g = el('g', {}, 'plate');
+    const handle = el('path', { d: 'M-26 -28 A 26 26 0 0 1 26 -28', 'stroke-width': 9, fill: 'none' });
+    handle.style.stroke = 'var(--hint)';
+    g.appendChild(handle);
+    state.ball = el('circle', { cx: 0, cy: 6, r: 42 });
+    g.appendChild(state.ball);
+    state.label = el('text', { x: 0, y: 15, 'text-anchor': 'middle', 'font-size': 26, 'font-weight': 700 });
+    state.label.style.fill = 'var(--bg)';
+    g.appendChild(state.label);
+    // translate — атрибутом на обёртке, масштаб — CSS-transform на внутренней
+    // группе (CSS-transform перекрыл бы атрибут, будь они на одном узле)
+    const wrap = el('g', { transform: 'translate(170,100)' });
+    wrap.appendChild(g);
+    svg.appendChild(wrap);
+    state.g = g;
+  }
+
+  function renderKettlebell(svg, state, exercise, weight) {
+    if (!state.built) {
+      svg.replaceChildren();
+      buildKettlebellStatic(svg, state);
+      state.built = true;
+    }
+    const noms = VIZ_TYPES.kettlebell.nominals;
+    let nominal = noms[0];
+    for (const n of noms) if (Math.abs(n - weight) < Math.abs(nominal - weight)) nominal = n;
+    const t = noms.indexOf(nominal) / (noms.length - 1);
+    state.ball.style.fill = KB_COLORS[nominal] || '#87909b';
+    state.label.textContent = fmt(nominal);
+    state.g.style.transform = `scale(${(0.55 + 0.45 * t).toFixed(3)})`;
+    return '';
+  }
+
+  /* ------------------------------------------------------------------ */
 
   function fmt(n) {
     return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100).replace('.', ',');
@@ -252,10 +406,13 @@ const Viz = (() => {
     }
     const state = svg.__viz;
     switch (exercise.type) {
-      case 'barbell':  return renderBarbell(svg, state, exercise, weight);
-      case 'stack':    return renderStack(svg, state, exercise, weight);
-      case 'dumbbell': return renderDumbbell(svg, state, exercise, weight);
-      default:         return '';
+      case 'barbell':    return renderBarbell(svg, state, exercise, weight);
+      case 'stack':      return renderStack(svg, state, exercise, weight);
+      case 'dumbbell':   return renderDumbbell(svg, state, exercise, weight);
+      case 'plates':     return renderPlates(svg, state, exercise, weight);
+      case 'body':       return renderBody(svg, state, exercise, weight);
+      case 'kettlebell': return renderKettlebell(svg, state, exercise, weight);
+      default:           return '';
     }
   }
 
@@ -278,6 +435,19 @@ const Viz = (() => {
         <rect x="6" y="12" width="6" height="16" rx="2.5" fill="currentColor" opacity=".7"/>
         <rect x="45" y="8" width="6" height="24" rx="2.5" fill="currentColor"/>
         <rect x="52" y="12" width="6" height="16" rx="2.5" fill="currentColor" opacity=".7"/>`,
+      plates: `<g transform="rotate(-10 32 22)">
+        <rect x="8" y="20" width="50" height="3.5" rx="1.75" fill="currentColor" opacity=".6"/>
+        <rect x="18" y="7" width="6" height="30" rx="2.5" fill="currentColor"/>
+        <rect x="26" y="11" width="5" height="22" rx="2" fill="currentColor" opacity=".8"/>
+        <rect x="33" y="14" width="4" height="16" rx="2" fill="currentColor" opacity=".6"/>
+      </g>`,
+      body: `<rect x="14" y="4" width="36" height="3" rx="1.5" fill="currentColor" opacity=".6"/>
+        <path d="M17 7l11 8M47 7L36 15" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+        <circle cx="32" cy="13" r="4" fill="currentColor"/>
+        <path d="M32 18v9M32 27l-5 8M32 27l5 8" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <circle cx="32" cy="32" r="4.5" fill="currentColor" opacity=".7"/>`,
+      kettlebell: `<path d="M25 15a7 7 0 0114 0" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <circle cx="32" cy="26" r="11" fill="currentColor"/>`,
     };
     return `<svg viewBox="0 0 64 40" xmlns="http://www.w3.org/2000/svg">${icons[type] || ''}</svg>`;
   }

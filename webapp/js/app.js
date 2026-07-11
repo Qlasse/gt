@@ -149,6 +149,27 @@
     return { min, max: t.max };
   }
 
+  /** Привести вес к допустимому: клэмп по границам, для гирь — ближайший номинал. */
+  function snapWeight(ex, w) {
+    const { min, max } = bounds(ex);
+    w = Math.min(max, Math.max(min, w));
+    const noms = (VIZ_TYPES[ex.type] || {}).nominals;
+    if (!noms) return Math.round(w * 100) / 100;
+    let best = noms[0];
+    for (const n of noms) if (Math.abs(n - w) < Math.abs(best - w)) best = n;
+    return best;
+  }
+
+  /** Вес после steps шагов от base: арифметика или движение по номиналам. */
+  function shiftWeight(base, steps) {
+    const noms = (VIZ_TYPES[current.type] || {}).nominals;
+    if (noms) {
+      const idx = noms.indexOf(snapWeight(current, base));
+      return noms[Math.min(noms.length - 1, Math.max(0, idx + steps))];
+    }
+    return base + steps * current.step;
+  }
+
   let displayed = 0;       // отображаемое число (для твина)
   let tweenRaf = null;
 
@@ -173,11 +194,17 @@
       else { displayed = target; weightValue.textContent = Viz.fmt(target); }
     };
     tweenRaf = requestAnimationFrame(tick);
+    // Страховка: если rAF приторможен (фоновый WebView), число всё равно доедет
+    setTimeout(() => {
+      if (current && current.weight === target && displayed !== target) {
+        displayed = target;
+        weightValue.textContent = Viz.fmt(target);
+      }
+    }, dur + 80);
   }
 
   function setWeight(w, { silent = false } = {}) {
-    const { min, max } = bounds(current);
-    const clamped = Math.min(max, Math.max(min, Math.round(w * 100) / 100));
+    const clamped = snapWeight(current, w);
     if (clamped === current.weight) return false;
     current.weight = clamped;
     renderWeight();
@@ -192,7 +219,9 @@
     $('btn-fav').classList.toggle('active', !!ex.favorite);
     $('inp-sets').value = '';
     $('inp-reps').value = '';
-    document.querySelector('.scrub-hint').textContent = `тяните число вбок · шаг ${Viz.fmt(ex.step)} кг`;
+    document.querySelector('.scrub-hint').textContent = (VIZ_TYPES[ex.type] || {}).nominals
+      ? 'тяните число вбок · по номиналам гирь'
+      : `тяните число вбок · шаг ${Viz.fmt(ex.step)} кг`;
     vizSvg.__viz = null; // не тянуть анимацию блинов от предыдущего упражнения
     editIdx = -1;
     displayed = ex.weight;
@@ -345,7 +374,7 @@
     let timer = null;
     let count = 0;
     const stepOnce = () => {
-      setWeight(current.weight + dir * current.step);
+      setWeight(shiftWeight(current.weight, dir));
       count++;
     };
     const loop = () => {
@@ -387,7 +416,7 @@
     zone.addEventListener('pointermove', (ev) => {
       if (!active) return;
       const steps = Math.round((ev.clientX - startX) / PX_PER_STEP);
-      setWeight(startWeight + steps * current.step);
+      setWeight(shiftWeight(startWeight, steps));
     });
     const end = () => {
       if (!active) return;
@@ -429,11 +458,13 @@
         btn.classList.add('active');
         $('inp-step').value = cfg.defaultStep;
         $('field-bar').hidden = type !== 'barbell';
+        $('field-step').hidden = !!cfg.nominals;
         haptic.light();
       });
       picker.appendChild(btn);
     }
     $('field-bar').hidden = pickedType !== 'barbell';
+    $('field-step').hidden = !!(VIZ_TYPES[pickedType] || {}).nominals;
   }
 
   function createExercise() {
@@ -455,8 +486,7 @@
       } else {
         delete editing.barWeight;
       }
-      const b = bounds(editing);
-      editing.weight = Math.min(b.max, Math.max(b.min, editing.weight));
+      editing.weight = snapWeight(editing, editing.weight);
       const ex = editing;
       editing = null;
       saveExercises();
@@ -476,8 +506,8 @@
     if (pickedType === 'barbell') {
       ex.barWeight = parseFloat($('inp-bar').value);
       if (!(ex.barWeight >= 0)) ex.barWeight = 20;
-      ex.weight = Math.max(ex.weight, ex.barWeight);
     }
+    ex.weight = snapWeight(ex, ex.weight);
     exercises.push(ex);
     saveExercises();
     haptic.success();
@@ -588,14 +618,30 @@
     }
   });
 
-  // Поле ввода не должно прятаться под клавиатурой: после её появления
-  // прокручиваем экран так, чтобы поле оказалось по центру видимой области.
+  // Поле ввода не должно прятаться под клавиатурой. Клавиатура открывается
+  // с анимацией и меняет viewport в непредсказуемый момент, поэтому:
+  // несколько попыток прокрутки по таймеру + прокрутка при фактическом
+  // изменении видимой области (visualViewport / viewportChanged Telegram).
+  let kbFocused = null;
+  function ensureFieldVisible(behavior) {
+    if (kbFocused && document.activeElement === kbFocused) {
+      try { kbFocused.scrollIntoView({ block: 'center', behavior }); } catch (_) {}
+    }
+  }
   document.addEventListener('focusin', (ev) => {
     if (ev.target.tagName !== 'INPUT') return;
-    setTimeout(() => {
-      try { ev.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
-    }, 350);
+    kbFocused = ev.target;
+    setTimeout(() => ensureFieldVisible('smooth'), 120);
+    setTimeout(() => ensureFieldVisible('smooth'), 400);
+    setTimeout(() => ensureFieldVisible('auto'), 800);
   });
+  document.addEventListener('focusout', () => { kbFocused = null; });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => setTimeout(() => ensureFieldVisible('auto'), 60));
+  }
+  if (tg) {
+    try { tg.onEvent('viewportChanged', () => setTimeout(() => ensureFieldVisible('auto'), 60)); } catch (_) {}
+  }
 
   /* ---------- Старт ---------- */
   window.addEventListener('beforeunload', () => Storage.flush());

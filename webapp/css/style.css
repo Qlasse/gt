@@ -51,7 +51,9 @@ body {
 
 #app {
   position: relative;
-  height: 100%;
+  /* Высота видимой области Telegram: при открытии клавиатуры сжимается,
+     и прокрутка к полю ввода работает по фактически видимой зоне */
+  height: var(--tg-viewport-height, 100%);
   max-width: 520px;
   margin: 0 auto;
   overflow: hidden;
@@ -446,7 +448,7 @@ body.tg .btn-primary { display: none; }
 .field input:focus { box-shadow: 0 0 0 2px var(--accent); }
 .field[hidden] { display: none; }
 
-.type-picker { display: flex; gap: 10px; }
+.type-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .type-option {
   flex: 1;
   display: flex;
@@ -473,6 +475,11 @@ body.tg .btn-primary { display: none; }
 #viz .plate   { transition: transform 0.28s var(--spring), opacity 0.22s var(--ease); transform-box: fill-box; transform-origin: center; }
 #viz .plate.enter { transform: scale(0); opacity: 0; }
 #viz text     { fill: var(--hint); font-family: inherit; }
+
+#viz .sil { stroke: var(--hint); stroke-width: 6; stroke-linecap: round; fill: none; opacity: 0.55; }
+#viz .sil-torso { stroke-width: 12; }
+#viz .sil-fill { fill: var(--hint); opacity: 0.55; }
+#viz text { font-weight: 700; }
 
 #viz .stack-block { fill: var(--section); stroke: var(--separator); transition: fill 0.25s var(--ease); }
 #viz .stack-block.on { fill: var(--accent); stroke: none; opacity: 0.92; }
