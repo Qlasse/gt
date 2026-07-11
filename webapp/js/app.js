@@ -96,6 +96,7 @@
   }
 
   const goBack = () => {
+    if (screen === 'exercise') closeWeightEditor(); // применить набранный вес
     Storage.flush();
     if (screen === 'add' && editing) {
       // из редактирования возвращаемся на экран упражнения, а не домой
@@ -129,25 +130,50 @@
       <span class="card-weight">${Viz.fmt(ex.weight)}<span class="u">кг</span></span>`;
   }
 
-  function renderHome() {
-    const favs = exercises.filter((e) => e.favorite);
-    const rest = exercises.filter((e) => !e.favorite);
-    const favList = $('fav-list');
-    const allList = $('all-list');
-    favList.replaceChildren();
-    allList.replaceChildren();
+  function buildCard(ex) {
+    const card = document.createElement('button');
+    card.className = 'ex-card' + (ex.color ? ' colored' : '');
+    if (ex.color) card.style.setProperty('--card-accent', ex.color);
+    card.innerHTML = cardHTML(ex);
+    card.addEventListener('click', () => openExercise(ex));
+    return card;
+  }
 
-    for (const [list, items] of [[favList, favs], [allList, rest]]) {
-      for (const ex of items) {
-        const card = document.createElement('button');
-        card.className = 'ex-card';
-        card.innerHTML = cardHTML(ex);
-        card.addEventListener('click', () => openExercise(ex));
-        list.appendChild(card);
+  function renderHome() {
+    const wrap = $('home-sections');
+    wrap.replaceChildren();
+
+    const favs = exercises.filter((e) => e.favorite);
+    const groups = new Map(); // имя группы -> упражнения (в порядке появления)
+    const ungrouped = [];
+    for (const ex of exercises.filter((e) => !e.favorite)) {
+      const g = (ex.group || '').trim();
+      if (g) {
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(ex);
+      } else {
+        ungrouped.push(ex);
       }
     }
-    $('fav-section').hidden = favs.length === 0;
-    $('all-section').hidden = rest.length === 0;
+
+    const addSection = (title, items) => {
+      if (items.length === 0) return;
+      const sec = document.createElement('div');
+      sec.className = 'list-section';
+      const h = document.createElement('h2');
+      h.className = 'section-title';
+      h.textContent = title;
+      const list = document.createElement('div');
+      list.className = 'card-list';
+      for (const ex of items) list.appendChild(buildCard(ex));
+      sec.appendChild(h);
+      sec.appendChild(list);
+      wrap.appendChild(sec);
+    };
+
+    addSection('Избранное', favs);
+    for (const [g, items] of groups) addSection(g, items);
+    addSection(groups.size > 0 ? 'Без группы' : 'Все упражнения', ungrouped);
     $('home-empty').hidden = exercises.length > 0;
   }
 
@@ -239,10 +265,14 @@
     $('inp-sets').value = '';
     $('inp-reps').value = '';
     document.querySelector('.scrub-hint').textContent = (VIZ_TYPES[ex.type] || {}).nominals
-      ? 'тяните число вбок · по номиналам гирь'
-      : `тяните число вбок · шаг ${Viz.fmt(ex.step)} кг`;
+      ? 'тап — ввод · свайп по номиналам гирь'
+      : `тап — ввод · свайп с шагом ${Viz.fmt(ex.step)} кг`;
     vizSvg.__viz = null; // не тянуть анимацию блинов от предыдущего упражнения
     editIdx = -1;
+    // жёсткий сброс редактора веса без применения — значение прошлого
+    // упражнения не должно попасть в новое
+    weightInput.hidden = true;
+    $('weight-scrub').classList.remove('editing');
     displayed = ex.weight;
     weightValue.textContent = Viz.fmt(ex.weight);
     vizNote.textContent = Viz.render(vizSvg, ex, ex.weight);
@@ -339,6 +369,7 @@
 
   function recordEntry() {
     if (!current) return;
+    closeWeightEditor(); // применяем набранный вес до записи
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     const entry = { d: todayISO(), w: current.weight };
     const s = parseInt($('inp-sets').value, 10);
@@ -409,6 +440,7 @@
     };
     const start = (ev) => {
       ev.preventDefault();
+      closeWeightEditor(); // применить набранное с клавиатуры и шагать от него
       stop(); // страховка: повторное нажатие не должно оставить «висящий» автоповтор
       try { btn.setPointerCapture(ev.pointerId); } catch (_) {}
       count = 0;
@@ -421,15 +453,47 @@
   bindStepper($('btn-minus'), -1);
   bindStepper($('btn-plus'), +1);
 
-  /* Скраб: горизонтальный драг по числу веса */
+  /* Ввод веса с клавиатуры: тап по числу открывает поле, значение
+     автоматически ограничивается пределами упражнения (snapWeight). */
+  const weightInput = $('weight-input');
+
+  function openWeightEditor() {
+    if (!current) return;
+    $('weight-scrub').classList.add('editing');
+    weightInput.hidden = false;
+    weightInput.value = current.weight;
+    weightInput.focus();
+    try { weightInput.select(); } catch (_) {}
+  }
+
+  function closeWeightEditor() {
+    if (weightInput.hidden) return;
+    const v = parseFloat(String(weightInput.value).replace(',', '.'));
+    if (Number.isFinite(v)) setWeight(v, { silent: true }); // клэмп к min/max внутри
+    weightInput.hidden = true;
+    $('weight-scrub').classList.remove('editing');
+    Storage.flush();
+  }
+  // Закрытие редактора не полагается на одно лишь blur-событие:
+  // Enter, тап вне зоны, степпер и запись подхода закрывают его явно.
+  weightInput.addEventListener('blur', closeWeightEditor);
+  weightInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      closeWeightEditor();
+    }
+  });
+
+  /* Скраб: горизонтальный драг по числу веса; тап без движения — ввод */
   (() => {
     const zone = $('weight-scrub');
     const PX_PER_STEP = 14;
-    let startX = 0, startWeight = 0, active = false;
+    let startX = 0, startWeight = 0, active = false, moved = false;
 
     zone.addEventListener('pointerdown', (ev) => {
-      if (!current) return;
+      if (!current || ev.target === weightInput) return;
       active = true;
+      moved = false;
       startX = ev.clientX;
       startWeight = current.weight;
       zone.classList.add('scrubbing');
@@ -437,14 +501,16 @@
     });
     zone.addEventListener('pointermove', (ev) => {
       if (!active) return;
+      if (Math.abs(ev.clientX - startX) > 6) moved = true;
       const steps = Math.round((ev.clientX - startX) / PX_PER_STEP);
       setWeight(shiftWeight(startWeight, steps));
     });
-    const end = () => {
+    const end = (ev) => {
       if (!active) return;
       active = false;
       zone.classList.remove('scrubbing');
       Storage.flush();
+      if (ev.type === 'pointerup' && !moved) openWeightEditor();
     };
     zone.addEventListener('pointerup', end);
     zone.addEventListener('pointercancel', end);
@@ -452,17 +518,77 @@
 
   /* ---------- Экран добавления / редактирования ---------- */
   let pickedType = 'barbell';
+  let pickedColor = null;
+  let presetWeight = null; // стартовый вес из выбранного шаблона
   let editing = null; // упражнение в режиме редактирования (null — создание нового)
+
+  function buildColorPicker() {
+    const el = $('color-picker');
+    el.replaceChildren();
+    for (const color of [null, ...CARD_COLORS]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch' + (color === null ? ' none' : '') + (pickedColor === color ? ' active' : '');
+      b.setAttribute('aria-label', color === null ? 'Без цвета' : 'Цвет ' + color);
+      if (color) b.style.background = color;
+      b.addEventListener('click', () => {
+        pickedColor = color;
+        buildColorPicker();
+        haptic.light();
+      });
+      el.appendChild(b);
+    }
+  }
+
+  function buildPresets() {
+    const row = $('preset-row');
+    row.replaceChildren();
+    for (const p of EXERCISE_PRESETS) {
+      if (exercises.some((e) => e.name === p.name)) continue; // уже в каталоге
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'preset-chip';
+      chip.textContent = p.name;
+      chip.addEventListener('click', () => {
+        $('inp-name').value = p.name;
+        pickedType = p.type;
+        buildTypePicker();
+        $('inp-step').value = p.step;
+        if (p.barWeight != null) $('inp-bar').value = p.barWeight;
+        presetWeight = p.weight;
+        haptic.light();
+      });
+      row.appendChild(chip);
+    }
+    $('field-presets').hidden = row.children.length === 0;
+  }
+
+  function fillGroupSuggestions() {
+    const dl = $('group-list');
+    dl.replaceChildren();
+    for (const g of new Set(exercises.map((e) => (e.group || '').trim()).filter(Boolean))) {
+      const o = document.createElement('option');
+      o.value = g;
+      dl.appendChild(o);
+    }
+  }
 
   function openAddScreen(ex) {
     editing = ex || null;
+    presetWeight = null;
     $('add-title').textContent = editing ? 'Изменить упражнение' : 'Новое упражнение';
     $('btn-create').textContent = editing ? 'Сохранить' : 'Добавить упражнение';
     $('inp-name').value = editing ? editing.name : '';
+    $('inp-group').value = editing ? editing.group || '' : '';
     pickedType = editing ? editing.type : 'barbell';
+    pickedColor = editing ? editing.color || null : null;
     $('inp-step').value = editing ? editing.step : VIZ_TYPES.barbell.defaultStep;
     $('inp-bar').value = editing && editing.barWeight != null ? editing.barWeight : 20;
     buildTypePicker();
+    buildColorPicker();
+    fillGroupSuggestions();
+    if (editing) $('field-presets').hidden = true;
+    else buildPresets();
     showScreen('add');
   }
 
@@ -498,10 +624,14 @@
     const cfg = VIZ_TYPES[pickedType];
     const step = parseFloat($('inp-step').value) || cfg.defaultStep;
 
+    const group = $('inp-group').value.trim();
+
     if (editing) {
       editing.name = name;
       editing.type = pickedType;
       editing.step = step;
+      if (group) editing.group = group; else delete editing.group;
+      if (pickedColor) editing.color = pickedColor; else delete editing.color;
       if (pickedType === 'barbell') {
         editing.barWeight = parseFloat($('inp-bar').value);
         if (!(editing.barWeight >= 0)) editing.barWeight = 20;
@@ -523,8 +653,10 @@
       type: pickedType,
       favorite: false,
       step,
-      weight: cfg.defaultWeight,
+      weight: presetWeight != null ? presetWeight : cfg.defaultWeight,
     };
+    if (group) ex.group = group;
+    if (pickedColor) ex.color = pickedColor;
     if (pickedType === 'barbell') {
       ex.barWeight = parseFloat($('inp-bar').value);
       if (!(ex.barWeight >= 0)) ex.barWeight = 20;
@@ -729,8 +861,9 @@
   document.addEventListener('pointerup', (ev) => {
     const isTap = Math.hypot(ev.clientX - tapX, ev.clientY - tapY) < 10;
     if (!isTap) return;
+    if (!ev.target.closest('#weight-scrub')) closeWeightEditor();
     const focused = document.activeElement;
-    if (focused && focused.tagName === 'INPUT' && !ev.target.closest('input, label')) {
+    if (focused && focused.tagName === 'INPUT' && !ev.target.closest('input, label, #weight-scrub')) {
       focused.blur();
     }
     // тап вне истории закрывает редактируемую запись

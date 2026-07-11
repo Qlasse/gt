@@ -49,16 +49,23 @@ const VIZ_TYPES = {
 };
 
 const DEFAULT_EXERCISES = [
-  { id: 'bench',    name: 'Жим лёжа',                  type: 'barbell',  favorite: true,  step: 2.5, barWeight: 20, weight: 60 },
-  { id: 'squat',    name: 'Присед',                    type: 'barbell',  favorite: false, step: 2.5, barWeight: 20, weight: 80 },
-  { id: 'deadlift', name: 'Становая тяга',             type: 'barbell',  favorite: false, step: 2.5, barWeight: 20, weight: 100 },
-  { id: 'latpull',  name: 'Тяга верхнего блока',       type: 'stack',    favorite: true,  step: 5,   weight: 50 },
-  { id: 'row',      name: 'Тяга горизонтального блока', type: 'stack',   favorite: false, step: 5,   weight: 45 },
-  { id: 'dbpress',  name: 'Жим гантелей',              type: 'dumbbell', favorite: false, step: 2,   weight: 16 },
-  { id: 'legpress', name: 'Жим ногами',                type: 'plates',   favorite: false, step: 5,   weight: 80 },
-  { id: 'pullup',   name: 'Подтягивания с весом',      type: 'body',     favorite: false, step: 2.5, weight: 0 },
-  { id: 'swing',    name: 'Свинг гирей',               type: 'kettlebell', favorite: false, step: 4, weight: 16 },
+  { id: 'bench',   name: 'Жим лёжа',            type: 'barbell',  favorite: false, step: 2.5, barWeight: 20, weight: 60 },
+  { id: 'dbpress', name: 'Жим гантелей',        type: 'dumbbell', favorite: false, step: 2,   weight: 16 },
+  { id: 'latpull', name: 'Тяга верхнего блока', type: 'stack',    favorite: false, step: 5,   weight: 50 },
 ];
+
+/** Шаблоны для быстрого добавления через «+» (уже добавленные не показываются). */
+const EXERCISE_PRESETS = [
+  { name: 'Присед',                     type: 'barbell',    step: 2.5, barWeight: 20, weight: 80 },
+  { name: 'Становая тяга',              type: 'barbell',    step: 2.5, barWeight: 20, weight: 100 },
+  { name: 'Тяга горизонтального блока', type: 'stack',      step: 5,   weight: 45 },
+  { name: 'Жим ногами',                 type: 'plates',     step: 5,   weight: 80 },
+  { name: 'Подтягивания с весом',       type: 'body',       step: 2.5, weight: 0 },
+  { name: 'Свинг гирей',                type: 'kettlebell', step: 4,   weight: 16 },
+];
+
+/** Цвета карточек — та же приглушённая палитра, что у блинов на штанге. */
+const CARD_COLORS = ['#4a7dbd', '#c9564f', '#d3a93c', '#579e60', '#7d6bb5', '#cf8b4a', '#87909b'];
 
 /** Сколько записей истории храним на упражнение (лимит CloudStorage — 4096 символов на ключ). */
 const LOG_LIMIT = 60;

@@ -26,14 +26,7 @@
         </div>
       </header>
       <div id="home-list">
-        <div id="fav-section" class="list-section">
-          <h2 class="section-title">Избранное</h2>
-          <div id="fav-list" class="card-list"></div>
-        </div>
-        <div id="all-section" class="list-section">
-          <h2 class="section-title">Все упражнения</h2>
-          <div id="all-list" class="card-list"></div>
-        </div>
+        <div id="home-sections"></div>
         <div id="home-empty" class="empty-state" hidden>
           <p>Пока нет упражнений.</p>
           <p class="hint">Нажмите «+», чтобы добавить первое.</p>
@@ -64,8 +57,9 @@
         </div>
 
         <div class="weight-block">
-          <div id="weight-scrub" class="weight-display" title="Потяните в сторону, чтобы изменить">
+          <div id="weight-scrub" class="weight-display" title="Тап — ввод, свайп — подбор">
             <span id="weight-value">60</span><span class="weight-unit">кг</span>
+            <input id="weight-input" class="weight-input" type="number" inputmode="decimal" enterkeyhint="done" hidden>
           </div>
           <div class="scrub-hint">тяните число вбок · шаг 2,5 кг</div>
         </div>
@@ -119,10 +113,26 @@
       </header>
 
       <div class="add-body">
+        <div class="field" id="field-presets">
+          <span class="field-label">Быстрый выбор</span>
+          <div id="preset-row" class="preset-row"></div>
+        </div>
+
         <label class="field">
           <span class="field-label">Название</span>
           <input id="inp-name" type="text" maxlength="40" placeholder="Например, жим ногами">
         </label>
+
+        <label class="field">
+          <span class="field-label">Группа <span class="label-opt">необязательно</span></span>
+          <input id="inp-group" type="text" maxlength="30" list="group-list" placeholder="Например, спина">
+          <datalist id="group-list"></datalist>
+        </label>
+
+        <div class="field">
+          <span class="field-label">Цвет карточки</span>
+          <div id="color-picker" class="color-picker"></div>
+        </div>
 
         <div class="field">
           <span class="field-label">Снаряд</span>
