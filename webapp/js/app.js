@@ -58,6 +58,67 @@
     }, 2600);
   }
 
+  /* Bottom-sheet: контекстные меню действий */
+  const sheetBackdrop = $('sheet-backdrop');
+  const sheetEl = $('sheet');
+
+  function sheetIsOpen() {
+    return !sheetBackdrop.hidden;
+  }
+
+  function openSheet(build) {
+    sheetEl.replaceChildren();
+    build(sheetEl);
+    const wasOpen = sheetIsOpen();
+    sheetBackdrop.hidden = false;
+    if (wasOpen) { sheetBackdrop.classList.add('show'); return; } // смена содержимого без переигрывания
+    requestAnimationFrame(() => requestAnimationFrame(() => sheetBackdrop.classList.add('show')));
+    setTimeout(() => sheetBackdrop.classList.add('show'), 60); // страховка без rAF
+    haptic.medium();
+  }
+
+  function closeSheet() {
+    sheetBackdrop.classList.remove('show');
+    setTimeout(() => { sheetBackdrop.hidden = true; }, 220);
+  }
+  sheetBackdrop.addEventListener('click', (ev) => {
+    if (ev.target === sheetBackdrop) closeSheet();
+  });
+
+  function sheetTitle(text) {
+    const d = document.createElement('div');
+    d.className = 'sheet-title';
+    d.textContent = text;
+    return d;
+  }
+
+  function sheetRow(label, onClick, opts = {}) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sheet-row' + (opts.danger ? ' danger' : '');
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  /* Копирование JSON в буфер обмена с fallback для старых WebView */
+  async function copyJSON(obj, okMsg) {
+    const json = JSON.stringify(obj);
+    try {
+      await navigator.clipboard.writeText(json);
+      showToast(okMsg);
+    } catch (_) {
+      const ta = document.createElement('textarea');
+      ta.value = json;
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      showToast(ok ? okMsg : 'Не удалось скопировать');
+    }
+    haptic.success();
+  }
+
   const todayISO = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -68,22 +129,45 @@
     else Storage.set(KEY_EXERCISES, exercises);
   };
 
-  /* ---------- Навигация ---------- */
-  function showScreen(name) {
-    screen = name;
-    for (const [key, node] of Object.entries(screens)) {
-      node.classList.toggle('right', key !== name && key !== 'home');
-      node.classList.toggle('behind', key === 'home' && name !== 'home');
-    }
-    if (name === 'home') renderHome();
+  /* ---------- Навигация: стек экранов ----------
+     Нижние экраны стека уходят «под» верхние (behind), экраны вне стека —
+     за правый край (right). Так переходы отражают реальную вложенность:
+     главная -> упражнение -> редактирование. */
+  let stack = ['home'];
 
+  function applyStack() {
+    screen = stack[stack.length - 1];
+    for (const [key, node] of Object.entries(screens)) {
+      const idx = stack.indexOf(key);
+      node.classList.toggle('behind', idx !== -1 && key !== screen);
+      node.classList.toggle('right', idx === -1);
+    }
+    if (screen === 'home') renderHome();
     if (inTg) {
       try {
-        if (name === 'home') tg.BackButton.hide();
+        if (screen === 'home') tg.BackButton.hide();
         else tg.BackButton.show();
       } catch (_) {}
       updateMainButton();
     }
+  }
+
+  function setStack(arr) {
+    stack = arr;
+    applyStack();
+  }
+
+  function pushScreen(name) {
+    if (stack[stack.length - 1] === name) return;
+    const idx = stack.indexOf(name);
+    if (idx !== -1) stack.splice(idx, 1);
+    stack.push(name);
+    applyStack();
+  }
+
+  function popScreen() {
+    if (stack.length > 1) stack.pop();
+    applyStack();
   }
 
   function updateMainButton() {
@@ -96,16 +180,11 @@
   }
 
   const goBack = () => {
+    if (sheetIsOpen()) { closeSheet(); return; } // «назад» закрывает верхний слой
     if (screen === 'exercise') closeWeightEditor(); // применить набранный вес
     Storage.flush();
-    if (screen === 'add' && editing) {
-      // из редактирования возвращаемся на экран упражнения, а не домой
-      const ex = editing;
-      editing = null;
-      openExercise(ex);
-      return;
-    }
-    showScreen('home');
+    if (screen === 'add') editing = null;
+    popScreen();
   };
   if (inTg) {
     try { tg.BackButton.onClick(goBack); } catch (_) {}
@@ -135,8 +214,103 @@
     card.className = 'ex-card' + (ex.color ? ' colored' : '');
     if (ex.color) card.style.setProperty('--card-accent', ex.color);
     card.innerHTML = cardHTML(ex);
-    card.addEventListener('click', () => openExercise(ex));
+
+    // Long-press (450 мс) — контекстное меню: избранное, группа, цвет, удаление
+    let lpTimer = null, lpFired = false, sx = 0, sy = 0;
+    card.addEventListener('pointerdown', (ev) => {
+      lpFired = false;
+      sx = ev.clientX;
+      sy = ev.clientY;
+      lpTimer = setTimeout(() => {
+        lpFired = true;
+        openCardSheet(ex);
+      }, 450);
+    });
+    card.addEventListener('pointermove', (ev) => {
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) clearTimeout(lpTimer);
+    });
+    for (const t of ['pointerup', 'pointerleave', 'pointercancel']) {
+      card.addEventListener(t, () => clearTimeout(lpTimer));
+    }
+    card.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    card.addEventListener('click', (ev) => {
+      if (lpFired) { ev.preventDefault(); return; } // клик после long-press глотаем
+      openExercise(ex);
+    });
     return card;
+  }
+
+  function openCardSheet(ex) {
+    openSheet((s) => {
+      s.appendChild(sheetTitle(ex.name));
+      s.appendChild(sheetRow(ex.favorite ? 'Убрать из избранного' : 'В избранное', () => {
+        ex.favorite = !ex.favorite;
+        saveExercises();
+        closeSheet();
+        renderHome();
+        haptic.medium();
+      }));
+      s.appendChild(sheetRow('Переместить в группу…', () => openGroupSheet(ex)));
+      // цвет карточки — применяется сразу
+      const wrap = document.createElement('div');
+      wrap.className = 'color-picker sheet-swatches';
+      for (const color of [null, ...CARD_COLORS]) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'swatch' + (color === null ? ' none' : '') + ((ex.color || null) === color ? ' active' : '');
+        b.setAttribute('aria-label', color === null ? 'Без цвета' : 'Цвет ' + color);
+        if (color) b.style.background = color;
+        b.addEventListener('click', () => {
+          if (color) ex.color = color; else delete ex.color;
+          saveExercises();
+          closeSheet();
+          renderHome();
+          haptic.light();
+        });
+        wrap.appendChild(b);
+      }
+      s.appendChild(wrap);
+      s.appendChild(sheetRow('Удалить', () => {
+        closeSheet();
+        deleteExercise(ex, renderHome);
+      }, { danger: true }));
+    });
+  }
+
+  function openGroupSheet(ex) {
+    openSheet((s) => {
+      s.appendChild(sheetTitle(`Группа: ${ex.name}`));
+      const apply = (g) => {
+        if (g) ex.group = g; else delete ex.group;
+        saveExercises();
+        closeSheet();
+        renderHome();
+        haptic.medium();
+      };
+      for (const g of existingGroups()) {
+        s.appendChild(sheetRow(g + ((ex.group || '') === g ? '  ✓' : ''), () => apply(g)));
+      }
+      s.appendChild(sheetRow('Без группы' + (!ex.group ? '  ✓' : ''), () => apply('')));
+      const row = document.createElement('div');
+      row.className = 'sheet-new-group';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.maxLength = 30;
+      inp.placeholder = 'Новая группа';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn-mini he-save';
+      ok.setAttribute('aria-label', 'Создать группу');
+      ok.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      ok.addEventListener('click', () => {
+        const v = inp.value.trim();
+        if (v) apply(v);
+        else inp.focus();
+      });
+      row.appendChild(inp);
+      row.appendChild(ok);
+      s.appendChild(row);
+    });
   }
 
   function renderHome() {
@@ -267,6 +441,7 @@
     document.querySelector('.scrub-hint').textContent = (VIZ_TYPES[ex.type] || {}).nominals
       ? 'тап — ввод · свайп по номиналам гирь'
       : `тап — ввод · свайп с шагом ${Viz.fmt(ex.step)} кг`;
+    $('btn-reset-weight').textContent = `Сбросить до ${Viz.fmt(bounds(ex).min)} кг`;
     vizSvg.__viz = null; // не тянуть анимацию блинов от предыдущего упражнения
     editIdx = -1;
     // жёсткий сброс редактора веса без применения — значение прошлого
@@ -279,7 +454,7 @@
     currentLog = [];
     renderLog(); // мгновенно спрятать историю прошлого упражнения, пока грузится своя
     loadLog(ex.id);
-    showScreen('exercise');
+    setStack(['home', 'exercise']);
   }
 
   async function loadLog(id) {
@@ -409,16 +584,65 @@
     saveExercises();
   });
 
-  /* Удаление */
-  $('btn-delete').addEventListener('click', () => {
-    if (!current) return;
-    confirmDialog(`Удалить «${current.name}»? История записей тоже удалится.`, (ok) => {
+  /* Удаление упражнения (общее для меню и long-press) */
+  function deleteExercise(ex, after) {
+    confirmDialog(`Удалить «${ex.name}»? История записей тоже удалится.`, (ok) => {
       if (!ok) return;
-      exercises = exercises.filter((e) => e.id !== current.id);
-      Storage.remove(keyLog(current.id));
+      exercises = exercises.filter((e) => e.id !== ex.id);
+      Storage.remove(keyLog(ex.id));
       saveExercises();
-      current = null;
-      goBack();
+      showToast('Упражнение удалено');
+      if (after) after();
+    });
+  }
+
+  /* Меню действий (⋯) на экране упражнения */
+  $('btn-menu').addEventListener('click', () => {
+    if (!current) return;
+    const ex = current;
+    openSheet((s) => {
+      s.appendChild(sheetTitle(ex.name));
+      s.appendChild(sheetRow('Изменить', () => {
+        closeSheet();
+        openAddScreen(ex);
+      }));
+      s.appendChild(sheetRow('Дублировать', () => {
+        const copy = JSON.parse(JSON.stringify(ex));
+        copy.id = 'x' + Date.now().toString(36);
+        copy.name = ex.name + ' (копия)';
+        copy.favorite = false;
+        exercises.push(copy);
+        saveExercises();
+        closeSheet();
+        openExercise(copy);
+        showToast('Копия создана — история не копируется');
+      }));
+      s.appendChild(sheetRow('Выгрузить в JSON', async () => {
+        closeSheet();
+        const log = await Storage.get(keyLog(ex.id), []);
+        copyJSON(
+          { app: 'gymtracker', exported: todayISO(), exercise: ex, log: log || [] },
+          `«${ex.name}» скопировано в буфер обмена`
+        );
+      }));
+      s.appendChild(sheetRow('Очистить прогресс', () => {
+        closeSheet();
+        confirmDialog(`Удалить историю «${ex.name}»? Записи не восстановить.`, (ok) => {
+          if (!ok) return;
+          Storage.remove(keyLog(ex.id));
+          currentLog = [];
+          renderLog();
+          showToast('История упражнения очищена');
+          haptic.success();
+        });
+      }, { danger: true }));
+      s.appendChild(sheetRow('Удалить упражнение', () => {
+        closeSheet();
+        deleteExercise(ex, () => {
+          current = null;
+          setStack(['home']);
+        });
+      }, { danger: true }));
     });
   });
 
@@ -469,7 +693,7 @@
   function closeWeightEditor() {
     if (weightInput.hidden) return;
     const v = parseFloat(String(weightInput.value).replace(',', '.'));
-    if (Number.isFinite(v)) setWeight(v, { silent: true }); // клэмп к min/max внутри
+    if (current && Number.isFinite(v)) setWeight(v, { silent: true }); // клэмп к min/max внутри
     weightInput.hidden = true;
     $('weight-scrub').classList.remove('editing');
     Storage.flush();
@@ -563,15 +787,33 @@
     $('field-presets').hidden = row.children.length === 0;
   }
 
-  function fillGroupSuggestions() {
-    const dl = $('group-list');
-    dl.replaceChildren();
-    for (const g of new Set(exercises.map((e) => (e.group || '').trim()).filter(Boolean))) {
-      const o = document.createElement('option');
-      o.value = g;
-      dl.appendChild(o);
-    }
+  function existingGroups() {
+    return [...new Set(exercises.map((e) => (e.group || '').trim()).filter(Boolean))];
   }
+
+  function buildGroupSelect(selected) {
+    const sel = $('sel-group');
+    sel.replaceChildren();
+    const addOpt = (value, label) => {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    };
+    addOpt('', 'Без группы');
+    for (const g of existingGroups()) addOpt(g, g);
+    addOpt('__new', '+ Новая группа…');
+    sel.value = selected && existingGroups().includes(selected) ? selected : '';
+    $('field-new-group').hidden = true;
+    $('inp-group').value = '';
+  }
+
+  $('sel-group').addEventListener('change', () => {
+    const isNew = $('sel-group').value === '__new';
+    $('field-new-group').hidden = !isNew;
+    if (isNew) $('inp-group').focus();
+    haptic.light();
+  });
 
   function openAddScreen(ex) {
     editing = ex || null;
@@ -579,17 +821,16 @@
     $('add-title').textContent = editing ? 'Изменить упражнение' : 'Новое упражнение';
     $('btn-create').textContent = editing ? 'Сохранить' : 'Добавить упражнение';
     $('inp-name').value = editing ? editing.name : '';
-    $('inp-group').value = editing ? editing.group || '' : '';
+    buildGroupSelect(editing ? editing.group || '' : '');
     pickedType = editing ? editing.type : 'barbell';
     pickedColor = editing ? editing.color || null : null;
     $('inp-step').value = editing ? editing.step : VIZ_TYPES.barbell.defaultStep;
     $('inp-bar').value = editing && editing.barWeight != null ? editing.barWeight : 20;
     buildTypePicker();
     buildColorPicker();
-    fillGroupSuggestions();
     if (editing) $('field-presets').hidden = true;
     else buildPresets();
-    showScreen('add');
+    pushScreen('add');
   }
 
   function buildTypePicker() {
@@ -624,7 +865,8 @@
     const cfg = VIZ_TYPES[pickedType];
     const step = parseFloat($('inp-step').value) || cfg.defaultStep;
 
-    const group = $('inp-group').value.trim();
+    const selGroup = $('sel-group').value;
+    const group = selGroup === '__new' ? $('inp-group').value.trim() : selGroup;
 
     if (editing) {
       editing.name = name;
@@ -670,7 +912,13 @@
 
   $('btn-create').addEventListener('click', createExercise);
   $('btn-add').addEventListener('click', () => openAddScreen(null));
-  $('btn-edit').addEventListener('click', () => { if (current) openAddScreen(current); });
+
+  /* Сброс снаряда к минимуму (пустой гриф / минимальный номинал) */
+  $('btn-reset-weight').addEventListener('click', () => {
+    if (!current) return;
+    closeWeightEditor();
+    if (setWeight(bounds(current).min)) haptic.medium();
+  });
 
   /* ---------- Настройки ---------- */
   const KEEP_ON_CLEANUP = 20;
@@ -699,28 +947,14 @@
 
   $('btn-settings').addEventListener('click', () => {
     renderSettings();
-    showScreen('settings');
+    pushScreen('settings');
   });
 
   $('btn-export').addEventListener('click', async () => {
     const logs = await allLogs();
     const dump = { app: 'gymtracker', exported: todayISO(), exercises, logs: {} };
     exercises.forEach((e, i) => { dump.logs[e.id] = logs[i]; });
-    const json = JSON.stringify(dump);
-    try {
-      await navigator.clipboard.writeText(json);
-      showToast('Данные скопированы в буфер обмена');
-    } catch (_) {
-      // fallback для WebView без clipboard API
-      const ta = document.createElement('textarea');
-      ta.value = json;
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      showToast(ok ? 'Данные скопированы в буфер обмена' : 'Не удалось скопировать');
-    }
-    haptic.success();
+    copyJSON(dump, 'Данные скопированы в буфер обмена');
   });
 
   $('tgl-haptics').addEventListener('change', (ev) => {
@@ -931,5 +1165,13 @@
       exercises = []; // пользователь удалил всё сам — уважаем
     }
     renderHome();
+
+    // Скрытый жест long-press подсвечиваем один раз (discoverability)
+    Storage.get('hint-longpress', false).then((seen) => {
+      if (!seen && exercises.length > 0) {
+        setTimeout(() => showToast('Подсказка: удерживайте карточку — группа, цвет, избранное'), 1200);
+        Storage.set('hint-longpress', true);
+      }
+    });
   })();
 })();

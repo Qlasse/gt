@@ -42,11 +42,11 @@
           <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </button>
         <h1 id="ex-title" class="topbar-title"></h1>
-        <button id="btn-edit" class="btn-icon" aria-label="Изменить упражнение">
-          <svg viewBox="0 0 24 24" width="19" height="19"><path d="M4 20l1-4L16.5 4.5a2.12 2.12 0 013 3L8 19l-4 1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>
-        </button>
         <button id="btn-fav" class="btn-icon btn-star" aria-label="В избранное">
           <svg viewBox="0 0 24 24" width="22" height="22"><path class="star-path" d="M12 3.5l2.47 5.32 5.83.66-4.32 3.97 1.16 5.75L12 16.3l-5.14 2.9 1.16-5.75-4.32-3.97 5.83-.66z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/></svg>
+        </button>
+        <button id="btn-menu" class="btn-icon" aria-label="Действия с упражнением">
+          <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
         </button>
       </header>
 
@@ -68,6 +68,7 @@
           <button id="btn-minus" class="stepper-btn" aria-label="Меньше">−</button>
           <button id="btn-plus" class="stepper-btn" aria-label="Больше">+</button>
         </div>
+        <button id="btn-reset-weight" class="btn-ghost-sm">Сбросить вес</button>
 
         <div class="sets-row">
           <label class="sets-field">
@@ -98,7 +99,6 @@
           <ul id="history" class="history"></ul>
         </div>
 
-        <button id="btn-delete" class="btn-danger-ghost">Удалить упражнение</button>
       </div>
     </section>
 
@@ -125,8 +125,12 @@
 
         <label class="field">
           <span class="field-label">Группа <span class="label-opt">необязательно</span></span>
-          <input id="inp-group" type="text" maxlength="30" list="group-list" placeholder="Например, спина">
-          <datalist id="group-list"></datalist>
+          <select id="sel-group"></select>
+        </label>
+
+        <label class="field" id="field-new-group" hidden>
+          <span class="field-label">Название группы</span>
+          <input id="inp-group" type="text" maxlength="30" placeholder="Например, спина">
         </label>
 
         <div class="field">
@@ -197,6 +201,10 @@
         <div id="about-line" class="about"></div>
       </div>
     </section>
+
+    <div id="sheet-backdrop" class="sheet-backdrop" hidden>
+      <div id="sheet" class="sheet" role="menu"></div>
+    </div>
 
     <div id="toast" class="toast" hidden></div>
   </div>
