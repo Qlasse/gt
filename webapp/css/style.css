@@ -198,6 +198,65 @@ body.tg .topbar-title { text-align: left; padding-left: 6px; }
 .ex-card .card-weight .u { font-size: 12px; font-weight: 500; color: var(--hint); margin-left: 3px; }
 .ex-card .card-star { color: #f5b942; width: 14px; flex-shrink: 0; }
 
+/* ---------- Drag-n-drop карточек (long-press -> подъём -> перенос) ---------- */
+.ex-card.lifting {
+  transform: scale(1.05);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s var(--spring), box-shadow 0.2s var(--ease);
+}
+.ex-card.drag-source { opacity: 0.3; }
+
+.drag-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 70;
+  pointer-events: none;
+  transform-origin: center;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+  opacity: 0.96;
+}
+.drag-ghost.settle { transition: transform 0.26s var(--spring), opacity 0.2s var(--ease); }
+
+.drag-bar[hidden] { display: none; }
+.drag-target[hidden] { display: none; }
+.drag-bar {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  left: 14px;
+  right: 14px;
+  z-index: 45;
+  display: flex;
+  gap: 10px;
+}
+.drag-target {
+  flex: 1;
+  text-align: center;
+  padding: 13px 10px;
+  border-radius: 14px;
+  background: var(--section);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  border: 1.5px dashed var(--separator);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  transition: transform 0.15s var(--spring), border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.drag-target.danger { color: var(--danger); }
+.drag-target.drop-hover {
+  transform: scale(1.05);
+  border-color: var(--accent);
+  background: var(--bg);
+}
+.drag-target.danger.drop-hover { border-color: var(--danger); }
+
+.list-section.drop-hover .section-title { color: var(--accent); }
+.list-section.drop-hover .card-list {
+  outline: 2px dashed var(--accent);
+  outline-offset: 5px;
+  border-radius: 14px;
+}
+
 .empty-state { text-align: center; padding: 64px 24px; color: var(--text); }
 .empty-state .hint { color: var(--hint); margin-top: 6px; font-size: 14px; }
 
@@ -639,6 +698,9 @@ body.tg .btn-primary { display: none; }
 .switch:checked::after { transform: translateX(18px); }
 
 /* Bottom-sheet (меню действий) */
+/* ВАЖНО: display у скрытых оверлеев обязан уступать [hidden], иначе
+   невидимый слой перехватывает все касания */
+.sheet-backdrop[hidden] { display: none; }
 .sheet-backdrop {
   position: absolute;
   inset: 0;

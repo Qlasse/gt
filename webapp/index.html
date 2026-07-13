@@ -5,7 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>GymTracker</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Страховка от «мёртвого» экрана: ошибка в первые секунды загрузки
+    // (например, рассинхрон кэшированных файлов) — один принудительный перезапуск
+    (function () {
+      var t0 = Date.now();
+      window.addEventListener('error', function () {
+        if (Date.now() - t0 > 3000) return;
+        try {
+          if (sessionStorage.getItem('gt-crash-reload')) return;
+          sessionStorage.setItem('gt-crash-reload', '1');
+          var u = new URL(location.href);
+          u.searchParams.set('r', String(Date.now()));
+          location.replace(u.toString());
+        } catch (_) {}
+      });
+    })();
+  </script>
+  <link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
   <div id="app">
@@ -202,6 +219,12 @@
       </div>
     </section>
 
+    <div id="drag-bar" class="drag-bar" hidden>
+      <div class="drag-target" data-act="new">+ Новая группа</div>
+      <div class="drag-target" data-act="ungroup" hidden>Из группы</div>
+      <div class="drag-target danger" data-act="delete">Удалить</div>
+    </div>
+
     <div id="sheet-backdrop" class="sheet-backdrop" hidden>
       <div id="sheet" class="sheet" role="menu"></div>
     </div>
@@ -209,10 +232,10 @@
     <div id="toast" class="toast" hidden></div>
   </div>
 
-  <script src="js/storage.js"></script>
-  <script src="js/data.js"></script>
-  <script src="js/viz.js"></script>
-  <script src="js/chart.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/storage.js?v=14"></script>
+  <script src="js/data.js?v=14"></script>
+  <script src="js/viz.js?v=14"></script>
+  <script src="js/chart.js?v=14"></script>
+  <script src="js/app.js?v=14"></script>
 </body>
 </html>

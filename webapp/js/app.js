@@ -209,32 +209,239 @@
       <span class="card-weight">${Viz.fmt(ex.weight)}<span class="u">кг</span></span>`;
   }
 
+  /* ---------- Drag-n-drop карточек (по образцу iOS Home Screen) ----------
+     Long-press поднимает карточку; отпустил на месте — контекстное меню,
+     повёл пальцем — перенос: секции подсвечиваются, сверху появляются цели
+     «+ Новая группа» и «Удалить», у краёв работает автопрокрутка. */
+  const DnD = (() => {
+    let ex = null, srcCard = null, ghost = null;
+    let active = false;
+    let offX = 0, offY = 0, lastX = 0, lastY = 0;
+    let curTarget = null;
+    let scrollTimer = null;
+
+    // блокируем прокрутку страницы, пока карточка «в руке»
+    document.addEventListener('touchmove', (e) => {
+      if (active) e.preventDefault();
+    }, { passive: false });
+
+    function position() {
+      const appRect = document.getElementById('app').getBoundingClientRect();
+      ghost.style.transform =
+        `translate(${lastX - appRect.left - offX}px, ${lastY - appRect.top - offY}px) scale(1.05)`;
+    }
+
+    function targetAt(x, y) {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return null;
+      return el.closest('.drag-target, .list-section');
+    }
+
+    function setHover(t) {
+      if (t === curTarget) return;
+      if (curTarget) curTarget.classList.remove('drop-hover');
+      curTarget = t;
+      if (curTarget) {
+        curTarget.classList.add('drop-hover');
+        haptic.light();
+      }
+    }
+
+    function start(exercise, card, ev) {
+      if (active) return;
+      // страховка: не оставляем «призраков» от предыдущих переносов
+      document.querySelectorAll('.drag-ghost').forEach((n) => n.remove());
+      active = true;
+      ex = exercise;
+      srcCard = card;
+      card.classList.remove('lifting');
+      card.classList.add('drag-source');
+      const r = card.getBoundingClientRect();
+      offX = ev.clientX - r.left;
+      offY = ev.clientY - r.top;
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      ghost = card.cloneNode(true);
+      ghost.classList.remove('drag-source');
+      ghost.classList.add('drag-ghost');
+      ghost.style.width = r.width + 'px';
+      document.getElementById('app').appendChild(ghost);
+      position();
+      // цель «Из группы» — только когда карточке есть откуда выходить
+      $('drag-bar').querySelector('[data-act="ungroup"]').hidden =
+        !(exercise.group || exercise.favorite);
+      $('drag-bar').hidden = false;
+      // автопрокрутка у краёв списка
+      const home = screens.home;
+      scrollTimer = setInterval(() => {
+        const hr = home.getBoundingClientRect();
+        if (lastY < hr.top + 130) home.scrollTop -= 9;
+        else if (lastY > hr.bottom - 90) home.scrollTop += 9;
+      }, 16);
+    }
+
+    function move(ev) {
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      position();
+      setHover(targetAt(ev.clientX, ev.clientY));
+    }
+
+    function cleanup(settleGhostTo) {
+      clearInterval(scrollTimer);
+      scrollTimer = null;
+      $('drag-bar').hidden = true;
+      setHover(null);
+      if (ghost) {
+        const g = ghost;
+        g.classList.add('settle');
+        if (settleGhostTo) {
+          const appRect = document.getElementById('app').getBoundingClientRect();
+          g.style.transform =
+            `translate(${settleGhostTo.left - appRect.left}px, ${settleGhostTo.top - appRect.top}px) scale(1)`;
+        } else {
+          g.style.transform += ' scale(0.9)';
+          g.style.opacity = '0';
+        }
+        setTimeout(() => g.remove(), 280);
+      }
+      if (srcCard) srcCard.classList.remove('drag-source', 'lifting');
+      ghost = null;
+      srcCard = null;
+      active = false;
+    }
+
+    function drop() {
+      const t = curTarget;
+      const dragged = ex;
+      ex = null;
+
+      if (!t || !dragged) { // мимо цели (или повторный drop) — пружиним на место
+        cleanup(srcCard ? srcCard.getBoundingClientRect() : null);
+        return;
+      }
+
+      if (t.classList.contains('drag-target')) {
+        const act = t.dataset.act;
+        cleanup(null);
+        if (act === 'delete') {
+          deleteExercise(dragged, renderHome);
+        } else if (act === 'new') {
+          openNewGroupSheet(dragged);
+        } else if (act === 'ungroup') {
+          delete dragged.group;
+          dragged.favorite = false;
+          saveExercises();
+          renderHome();
+          haptic.success();
+        }
+        return;
+      }
+
+      const kind = t.dataset.dropKind;
+      if (kind === 'fav') {
+        dragged.favorite = true;
+      } else if (kind === 'group') {
+        dragged.group = t.dataset.dropName;
+        dragged.favorite = false;
+      } else {
+        delete dragged.group;
+        dragged.favorite = false;
+      }
+      cleanup(null);
+      saveExercises();
+      renderHome();
+      haptic.success();
+    }
+
+    function cancel() {
+      ex = null;
+      cleanup(srcCard ? srcCard.getBoundingClientRect() : null);
+    }
+
+    return { start, move, drop, cancel, isActive: () => active };
+  })();
+
+  /* Перенос в новую группу: имя спрашиваем в sheet */
+  function openNewGroupSheet(ex) {
+    openSheet((s) => {
+      s.appendChild(sheetTitle(`Новая группа для «${ex.name}»`));
+      const row = document.createElement('div');
+      row.className = 'sheet-new-group';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.maxLength = 30;
+      inp.placeholder = 'Название группы';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn-mini he-save';
+      ok.setAttribute('aria-label', 'Создать группу');
+      ok.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      ok.addEventListener('click', () => {
+        const v = inp.value.trim();
+        if (!v) { inp.focus(); return; }
+        ex.group = v;
+        ex.favorite = false;
+        saveExercises();
+        closeSheet();
+        renderHome();
+        haptic.success();
+      });
+      row.appendChild(inp);
+      row.appendChild(ok);
+      s.appendChild(row);
+      setTimeout(() => inp.focus(), 300);
+    });
+  }
+
   function buildCard(ex) {
     const card = document.createElement('button');
     card.className = 'ex-card' + (ex.color ? ' colored' : '');
     if (ex.color) card.style.setProperty('--card-accent', ex.color);
     card.innerHTML = cardHTML(ex);
 
-    // Long-press (450 мс) — контекстное меню: избранное, группа, цвет, удаление
-    let lpTimer = null, lpFired = false, sx = 0, sy = 0;
+    // Long-press (450 мс) поднимает карточку: отпустил — меню, повёл — перенос
+    let lpTimer = null, lifted = false, dragging = false, sx = 0, sy = 0;
     card.addEventListener('pointerdown', (ev) => {
-      lpFired = false;
+      lifted = false;
+      dragging = false;
       sx = ev.clientX;
       sy = ev.clientY;
+      try { card.setPointerCapture(ev.pointerId); } catch (_) {}
       lpTimer = setTimeout(() => {
-        lpFired = true;
-        openCardSheet(ex);
+        lifted = true;
+        card.classList.add('lifting');
+        haptic.medium();
       }, 450);
     });
     card.addEventListener('pointermove', (ev) => {
-      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) clearTimeout(lpTimer);
+      const moved = Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8;
+      if (!lifted) {
+        if (moved) clearTimeout(lpTimer); // обычная прокрутка списка
+        return;
+      }
+      if (!dragging && moved) {
+        dragging = true;
+        DnD.start(ex, card, ev);
+      }
+      if (dragging) DnD.move(ev);
     });
-    for (const t of ['pointerup', 'pointerleave', 'pointercancel']) {
-      card.addEventListener(t, () => clearTimeout(lpTimer));
-    }
+    card.addEventListener('pointerup', () => {
+      clearTimeout(lpTimer);
+      if (dragging) DnD.drop();
+      else if (lifted) {
+        card.classList.remove('lifting');
+        openCardSheet(ex);
+      }
+    });
+    card.addEventListener('pointercancel', () => {
+      clearTimeout(lpTimer);
+      if (dragging) DnD.cancel();
+      card.classList.remove('lifting');
+    });
     card.addEventListener('contextmenu', (ev) => ev.preventDefault());
     card.addEventListener('click', (ev) => {
-      if (lpFired) { ev.preventDefault(); return; } // клик после long-press глотаем
+      if (lifted || dragging) { ev.preventDefault(); return; } // не открывать после long-press
       openExercise(ex);
     });
     return card;
@@ -330,10 +537,12 @@
       }
     }
 
-    const addSection = (title, items) => {
+    const addSection = (title, items, drop) => {
       if (items.length === 0) return;
       const sec = document.createElement('div');
       sec.className = 'list-section';
+      sec.dataset.dropKind = drop.kind;           // цель для drag-n-drop
+      if (drop.name) sec.dataset.dropName = drop.name;
       const h = document.createElement('h2');
       h.className = 'section-title';
       h.textContent = title;
@@ -345,9 +554,9 @@
       wrap.appendChild(sec);
     };
 
-    addSection('Избранное', favs);
-    for (const [g, items] of groups) addSection(g, items);
-    addSection(groups.size > 0 ? 'Без группы' : 'Все упражнения', ungrouped);
+    addSection('Избранное', favs, { kind: 'fav' });
+    for (const [g, items] of groups) addSection(g, items, { kind: 'group', name: g });
+    addSection(groups.size > 0 ? 'Без группы' : 'Все упражнения', ungrouped, { kind: 'ungrouped' });
     $('home-empty').hidden = exercises.length > 0;
   }
 
