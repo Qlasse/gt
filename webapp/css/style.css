@@ -19,6 +19,27 @@
     --fb-separator: rgba(255, 255, 255, 0.08);
   }
 }
+/* OKLCH-палитра для поддерживающих браузеров: перцептивно ровнее hex-значений */
+@supports (color: oklch(50% 0.1 200)) {
+  :root {
+    --fb-bg: oklch(96.8% 0.005 265);
+    --fb-section: oklch(100% 0 0);
+    --fb-text: oklch(24% 0.02 255);
+    --fb-hint: oklch(56% 0.02 250);
+    --fb-accent: oklch(55% 0.19 262);
+    --fb-accent-text: oklch(100% 0 0);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fb-bg: oklch(24% 0.03 250);
+      --fb-section: oklch(30% 0.03 250);
+      --fb-text: oklch(96% 0 0);
+      --fb-hint: oklch(66% 0.02 245);
+      --fb-accent: oklch(72% 0.13 252);
+    }
+  }
+}
+
 :root {
   --bg: var(--tg-theme-bg-color, var(--fb-bg));
   --section: var(--tg-theme-section-bg-color, var(--fb-section));
@@ -55,6 +76,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* iOS: long-press не должен звать системное меню */
 }
 
 #app {
@@ -157,7 +180,9 @@ body.tg .topbar-title { text-align: left; padding-left: 6px; }
 
 /* ---------- Главная: список ---------- */
 #home-list { padding: 4px 16px 32px; }
-.list-section { margin-top: 14px; }
+/* Отступ секции — padding, а не margin: зазор между секциями остаётся
+   drop-целью, и подсветка при переносе не мигает в «мёртвых зонах» */
+.list-section { padding-top: 14px; }
 .list-section[hidden] { display: none; }
 .section-title {
   font-size: 13px;
@@ -198,71 +223,48 @@ body.tg .topbar-title { text-align: left; padding-left: 6px; }
 .ex-card .card-weight .u { font-size: 12px; font-weight: 500; color: var(--hint); margin-left: 3px; }
 .ex-card .card-star { color: #f5b942; width: 14px; flex-shrink: 0; }
 
-/* ---------- Drag-n-drop карточек (long-press -> подъём -> перенос) ---------- */
-.ex-card.lifting {
-  transform: scale(1.05);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  transition: transform 0.2s var(--spring), box-shadow 0.2s var(--ease);
-}
-.ex-card.drag-source { opacity: 0.3; }
-
-.drag-ghost {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 70;
-  pointer-events: none;
-  transform-origin: center;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
-  opacity: 0.96;
-}
-.drag-ghost.settle { transition: transform 0.26s var(--spring), opacity 0.2s var(--ease); }
-
-.drag-bar[hidden] { display: none; }
-.drag-target[hidden] { display: none; }
-.drag-bar {
-  position: absolute;
-  top: calc(8px + var(--safe-top));
-  left: 14px;
-  right: 14px;
-  z-index: 45;
+/* Тумблеры групп: включённый показывает только свою группу */
+.group-chips[hidden] { display: none; }
+.group-chips {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  padding: 8px 16px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.drag-target {
-  flex: 1;
-  text-align: center;
-  padding: 13px 10px;
-  border-radius: 14px;
+.group-chips::-webkit-scrollbar { display: none; }
+.group-chip {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
   background: var(--section);
   color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  border: 1.5px dashed var(--separator);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-  transition: transform 0.15s var(--spring), border-color 0.15s var(--ease), background 0.15s var(--ease);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: transform 0.12s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease);
 }
-.drag-target.danger { color: var(--danger); }
-.drag-target.drop-hover {
-  transform: scale(1.05);
-  border-color: var(--accent);
-  background: var(--bg);
-}
-.drag-target.danger.drop-hover { border-color: var(--danger); }
-
-.list-section.drop-hover .section-title { color: var(--accent); }
-.list-section.drop-hover .card-list {
-  outline: 2px dashed var(--accent);
-  outline-offset: 5px;
-  border-radius: 14px;
-}
+.group-chip:active { transform: scale(0.94); }
+.group-chip.active { background: var(--accent); color: var(--accent-text); }
 
 .empty-state { text-align: center; padding: 64px 24px; color: var(--text); }
 .empty-state .hint { color: var(--hint); margin-top: 6px; font-size: 14px; }
 
+/* Подпись живёт в overscroll-пространстве: бокс нулевой высоты не расширяет
+   прокрутку, текст виден только при «оттяжке» списка за нижний край */
 .credit {
   margin-top: auto;
-  padding: 24px 0 12px;
+  height: 0;
+  overflow: visible;
+  position: relative;
+}
+.credit span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 16px;
   text-align: center;
   font-size: 12px;
   letter-spacing: 0.04em;
@@ -421,10 +423,12 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .timer-fill {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 0;
+  width: 100%;
   background: var(--accent);
   opacity: 0.14;
-  transition: width 0.25s linear;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s linear;
 }
 #timer-label { position: relative; }
 
@@ -481,6 +485,32 @@ body.tg .btn-primary { display: none; }
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
   pointer-events: none;
   white-space: nowrap;
+}
+
+/* Рекорды (PR) */
+.records { display: flex; gap: 8px; margin-bottom: 16px; }
+.rec {
+  flex: 1;
+  background: var(--section);
+  border-radius: 12px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.rec-v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rec-v .u { font-size: 11px; color: var(--hint); font-weight: 500; }
+.rec-l { font-size: 11px; color: var(--hint); text-transform: uppercase; letter-spacing: 0.05em; }
+.pr-chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f5b942;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 1px 5px;
+  flex-shrink: 0;
 }
 
 .history { list-style: none; margin-top: 10px; }
@@ -658,10 +688,12 @@ body.tg .btn-primary { display: none; }
 .mem-bar { height: 6px; border-radius: 3px; background: var(--separator); overflow: hidden; }
 #mem-fill {
   height: 100%;
-  width: 0;
+  width: 100%;
   background: var(--accent);
   border-radius: 3px;
-  transition: width 0.4s var(--ease), background 0.3s;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s var(--ease), background 0.3s;
 }
 #mem-fill.warn { background: var(--danger); }
 .mem-text { margin-top: 9px; font-size: 13px; color: var(--hint); }
@@ -837,3 +869,19 @@ body.tg .btn-primary { display: none; }
 #viz .stack-pin { transition: transform 0.3s var(--spring); }
 #viz .stack-pin circle { fill: var(--text); }
 #viz .stack-pin rect { fill: var(--text); }
+
+/* ---------- Фоновый градиент + «стеклянные» шапки (при поддержке color-mix) ---------- */
+@supports (background: color-mix(in oklab, red 10%, blue)) {
+  .screen {
+    background:
+      radial-gradient(120% 46% at 50% -6%,
+        color-mix(in oklab, var(--accent) 9%, var(--bg)),
+        var(--bg) 60%);
+  }
+  .home-header,
+  .topbar {
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+}

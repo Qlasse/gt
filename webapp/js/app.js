@@ -66,10 +66,14 @@
     return !sheetBackdrop.hidden;
   }
 
+  let sheetShownAt = 0; // защита от ghost click (см. слушатель ниже)
+
   function openSheet(build) {
     sheetEl.replaceChildren();
     build(sheetEl);
+    sheetOpenedAt = Date.now();
     const wasOpen = sheetIsOpen();
+    sheetShownAt = Date.now();
     sheetBackdrop.hidden = false;
     if (wasOpen) { sheetBackdrop.classList.add('show'); return; } // смена содержимого без переигрывания
     requestAnimationFrame(() => requestAnimationFrame(() => sheetBackdrop.classList.add('show')));
@@ -81,7 +85,19 @@
     sheetBackdrop.classList.remove('show');
     setTimeout(() => { sheetBackdrop.hidden = true; }, 220);
   }
+  // Ghost click: после long-press/дропа тач-браузер добивает click по точке
+  // отпускания уже ПОСЛЕ открытия шита — без защиты меню закрывалось сразу
+  // (или клик попадал в строку меню). Первые 350 мс клики гасим (capture).
   sheetBackdrop.addEventListener('click', (ev) => {
+    if (Date.now() - sheetShownAt < 350) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
+  }, true);
+  let sheetOpenedAt = 0;
+  sheetBackdrop.addEventListener('click', (ev) => {
+    // отпускание пальца после long-press не должно закрыть только что открытое меню
+    if (Date.now() - sheetOpenedAt < 300) return;
     if (ev.target === sheetBackdrop) closeSheet();
   });
 
@@ -209,239 +225,33 @@
       <span class="card-weight">${Viz.fmt(ex.weight)}<span class="u">кг</span></span>`;
   }
 
-  /* ---------- Drag-n-drop карточек (по образцу iOS Home Screen) ----------
-     Long-press поднимает карточку; отпустил на месте — контекстное меню,
-     повёл пальцем — перенос: секции подсвечиваются, сверху появляются цели
-     «+ Новая группа» и «Удалить», у краёв работает автопрокрутка. */
-  const DnD = (() => {
-    let ex = null, srcCard = null, ghost = null;
-    let active = false;
-    let offX = 0, offY = 0, lastX = 0, lastY = 0;
-    let curTarget = null;
-    let scrollTimer = null;
-
-    // блокируем прокрутку страницы, пока карточка «в руке»
-    document.addEventListener('touchmove', (e) => {
-      if (active) e.preventDefault();
-    }, { passive: false });
-
-    function position() {
-      const appRect = document.getElementById('app').getBoundingClientRect();
-      ghost.style.transform =
-        `translate(${lastX - appRect.left - offX}px, ${lastY - appRect.top - offY}px) scale(1.05)`;
-    }
-
-    function targetAt(x, y) {
-      const el = document.elementFromPoint(x, y);
-      if (!el) return null;
-      return el.closest('.drag-target, .list-section');
-    }
-
-    function setHover(t) {
-      if (t === curTarget) return;
-      if (curTarget) curTarget.classList.remove('drop-hover');
-      curTarget = t;
-      if (curTarget) {
-        curTarget.classList.add('drop-hover');
-        haptic.light();
-      }
-    }
-
-    function start(exercise, card, ev) {
-      if (active) return;
-      // страховка: не оставляем «призраков» от предыдущих переносов
-      document.querySelectorAll('.drag-ghost').forEach((n) => n.remove());
-      active = true;
-      ex = exercise;
-      srcCard = card;
-      card.classList.remove('lifting');
-      card.classList.add('drag-source');
-      const r = card.getBoundingClientRect();
-      offX = ev.clientX - r.left;
-      offY = ev.clientY - r.top;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      ghost = card.cloneNode(true);
-      ghost.classList.remove('drag-source');
-      ghost.classList.add('drag-ghost');
-      ghost.style.width = r.width + 'px';
-      document.getElementById('app').appendChild(ghost);
-      position();
-      // цель «Из группы» — только когда карточке есть откуда выходить
-      $('drag-bar').querySelector('[data-act="ungroup"]').hidden =
-        !(exercise.group || exercise.favorite);
-      $('drag-bar').hidden = false;
-      // автопрокрутка у краёв списка
-      const home = screens.home;
-      scrollTimer = setInterval(() => {
-        const hr = home.getBoundingClientRect();
-        if (lastY < hr.top + 130) home.scrollTop -= 9;
-        else if (lastY > hr.bottom - 90) home.scrollTop += 9;
-      }, 16);
-    }
-
-    function move(ev) {
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      position();
-      setHover(targetAt(ev.clientX, ev.clientY));
-    }
-
-    function cleanup(settleGhostTo) {
-      clearInterval(scrollTimer);
-      scrollTimer = null;
-      $('drag-bar').hidden = true;
-      setHover(null);
-      if (ghost) {
-        const g = ghost;
-        g.classList.add('settle');
-        if (settleGhostTo) {
-          const appRect = document.getElementById('app').getBoundingClientRect();
-          g.style.transform =
-            `translate(${settleGhostTo.left - appRect.left}px, ${settleGhostTo.top - appRect.top}px) scale(1)`;
-        } else {
-          g.style.transform += ' scale(0.9)';
-          g.style.opacity = '0';
-        }
-        setTimeout(() => g.remove(), 280);
-      }
-      if (srcCard) srcCard.classList.remove('drag-source', 'lifting');
-      ghost = null;
-      srcCard = null;
-      active = false;
-    }
-
-    function drop() {
-      const t = curTarget;
-      const dragged = ex;
-      ex = null;
-
-      if (!t || !dragged) { // мимо цели (или повторный drop) — пружиним на место
-        cleanup(srcCard ? srcCard.getBoundingClientRect() : null);
-        return;
-      }
-
-      if (t.classList.contains('drag-target')) {
-        const act = t.dataset.act;
-        cleanup(null);
-        if (act === 'delete') {
-          deleteExercise(dragged, renderHome);
-        } else if (act === 'new') {
-          openNewGroupSheet(dragged);
-        } else if (act === 'ungroup') {
-          delete dragged.group;
-          dragged.favorite = false;
-          saveExercises();
-          renderHome();
-          haptic.success();
-        }
-        return;
-      }
-
-      const kind = t.dataset.dropKind;
-      if (kind === 'fav') {
-        dragged.favorite = true;
-      } else if (kind === 'group') {
-        dragged.group = t.dataset.dropName;
-        dragged.favorite = false;
-      } else {
-        delete dragged.group;
-        dragged.favorite = false;
-      }
-      cleanup(null);
-      saveExercises();
-      renderHome();
-      haptic.success();
-    }
-
-    function cancel() {
-      ex = null;
-      cleanup(srcCard ? srcCard.getBoundingClientRect() : null);
-    }
-
-    return { start, move, drop, cancel, isActive: () => active };
-  })();
-
-  /* Перенос в новую группу: имя спрашиваем в sheet */
-  function openNewGroupSheet(ex) {
-    openSheet((s) => {
-      s.appendChild(sheetTitle(`Новая группа для «${ex.name}»`));
-      const row = document.createElement('div');
-      row.className = 'sheet-new-group';
-      const inp = document.createElement('input');
-      inp.type = 'text';
-      inp.maxLength = 30;
-      inp.placeholder = 'Название группы';
-      const ok = document.createElement('button');
-      ok.type = 'button';
-      ok.className = 'btn-mini he-save';
-      ok.setAttribute('aria-label', 'Создать группу');
-      ok.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      ok.addEventListener('click', () => {
-        const v = inp.value.trim();
-        if (!v) { inp.focus(); return; }
-        ex.group = v;
-        ex.favorite = false;
-        saveExercises();
-        closeSheet();
-        renderHome();
-        haptic.success();
-      });
-      row.appendChild(inp);
-      row.appendChild(ok);
-      s.appendChild(row);
-      setTimeout(() => inp.focus(), 300);
-    });
-  }
-
   function buildCard(ex) {
     const card = document.createElement('button');
     card.className = 'ex-card' + (ex.color ? ' colored' : '');
     if (ex.color) card.style.setProperty('--card-accent', ex.color);
     card.innerHTML = cardHTML(ex);
 
-    // Long-press (450 мс) поднимает карточку: отпустил — меню, повёл — перенос
-    let lpTimer = null, lifted = false, dragging = false, sx = 0, sy = 0;
+    // Long-press (450 мс) — контекстное меню; движение до срабатывания = прокрутка
+    let lpTimer = null, lpFired = false, sx = 0, sy = 0;
     card.addEventListener('pointerdown', (ev) => {
-      lifted = false;
-      dragging = false;
+      lpFired = false;
       sx = ev.clientX;
       sy = ev.clientY;
-      try { card.setPointerCapture(ev.pointerId); } catch (_) {}
       lpTimer = setTimeout(() => {
-        lifted = true;
-        card.classList.add('lifting');
+        lpFired = true;
         haptic.medium();
+        openCardSheet(ex);
       }, 450);
     });
     card.addEventListener('pointermove', (ev) => {
-      const moved = Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8;
-      if (!lifted) {
-        if (moved) clearTimeout(lpTimer); // обычная прокрутка списка
-        return;
-      }
-      if (!dragging && moved) {
-        dragging = true;
-        DnD.start(ex, card, ev);
-      }
-      if (dragging) DnD.move(ev);
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) clearTimeout(lpTimer);
     });
-    card.addEventListener('pointerup', () => {
-      clearTimeout(lpTimer);
-      if (dragging) DnD.drop();
-      else if (lifted) {
-        card.classList.remove('lifting');
-        openCardSheet(ex);
-      }
-    });
-    card.addEventListener('pointercancel', () => {
-      clearTimeout(lpTimer);
-      if (dragging) DnD.cancel();
-      card.classList.remove('lifting');
-    });
+    for (const t of ['pointerup', 'pointerleave', 'pointercancel']) {
+      card.addEventListener(t, () => clearTimeout(lpTimer));
+    }
     card.addEventListener('contextmenu', (ev) => ev.preventDefault());
     card.addEventListener('click', (ev) => {
-      if (lifted || dragging) { ev.preventDefault(); return; } // не открывать после long-press
+      if (lpFired) { ev.preventDefault(); return; } // клик после long-press глотаем
       openExercise(ex);
     });
     return card;
@@ -520,14 +330,40 @@
     });
   }
 
+  /* Тумблеры групп: включённый показывает только свою группу */
+  let groupFilter = null;
+
+  function renderGroupChips() {
+    const bar = $('group-chips');
+    const gs = existingGroups();
+    if (groupFilter && !gs.includes(groupFilter)) groupFilter = null;
+    bar.hidden = gs.length === 0;
+    bar.replaceChildren();
+    for (const g of gs) {
+      const chip = document.createElement('button');
+      chip.className = 'group-chip' + (groupFilter === g ? ' active' : '');
+      chip.textContent = g;
+      chip.addEventListener('click', () => {
+        groupFilter = groupFilter === g ? null : g;
+        renderHome();
+        haptic.light();
+      });
+      bar.appendChild(chip);
+    }
+  }
+
   function renderHome() {
+    renderGroupChips();
     const wrap = $('home-sections');
     wrap.replaceChildren();
 
-    const favs = exercises.filter((e) => e.favorite);
+    const src = groupFilter
+      ? exercises.filter((e) => (e.group || '').trim() === groupFilter)
+      : exercises;
+    const favs = src.filter((e) => e.favorite);
     const groups = new Map(); // имя группы -> упражнения (в порядке появления)
     const ungrouped = [];
-    for (const ex of exercises.filter((e) => !e.favorite)) {
+    for (const ex of src.filter((e) => !e.favorite)) {
       const g = (ex.group || '').trim();
       if (g) {
         if (!groups.has(g)) groups.set(g, []);
@@ -537,12 +373,10 @@
       }
     }
 
-    const addSection = (title, items, drop) => {
+    const addSection = (title, items) => {
       if (items.length === 0) return;
       const sec = document.createElement('div');
       sec.className = 'list-section';
-      sec.dataset.dropKind = drop.kind;           // цель для drag-n-drop
-      if (drop.name) sec.dataset.dropName = drop.name;
       const h = document.createElement('h2');
       h.className = 'section-title';
       h.textContent = title;
@@ -554,9 +388,9 @@
       wrap.appendChild(sec);
     };
 
-    addSection('Избранное', favs, { kind: 'fav' });
-    for (const [g, items] of groups) addSection(g, items, { kind: 'group', name: g });
-    addSection(groups.size > 0 ? 'Без группы' : 'Все упражнения', ungrouped, { kind: 'ungrouped' });
+    addSection('Избранное', favs);
+    for (const [g, items] of groups) addSection(g, items);
+    addSection(groups.size > 0 && !groupFilter ? 'Без группы' : 'Все упражнения', ungrouped);
     $('home-empty').hidden = exercises.length > 0;
   }
 
@@ -648,8 +482,8 @@
     $('inp-sets').value = '';
     $('inp-reps').value = '';
     document.querySelector('.scrub-hint').textContent = (VIZ_TYPES[ex.type] || {}).nominals
-      ? 'тап — ввод · свайп по номиналам гирь'
-      : `тап — ввод · свайп с шагом ${Viz.fmt(ex.step)} кг`;
+      ? 'номиналы гирь'
+      : `шаг ${Viz.fmt(ex.step)} кг`;
     $('btn-reset-weight').textContent = `Сбросить до ${Viz.fmt(bounds(ex).min)} кг`;
     vizSvg.__viz = null; // не тянуть анимацию блинов от предыдущего упражнения
     editIdx = -1;
@@ -681,25 +515,47 @@
     Storage.flush();
   }
 
+  /* Рекорды (PR), как в Hevy: макс вес, расчётный 1ПМ (Эпли), объём */
+  function calcRecords(log) {
+    const rec = { w: 0, orm: 0, vol: 0 };
+    for (const e of log) {
+      rec.w = Math.max(rec.w, e.w);
+      rec.orm = Math.max(rec.orm, e.r ? e.w * (1 + e.r / 30) : e.w);
+      if (e.s && e.r) rec.vol = Math.max(rec.vol, e.w * e.s * e.r);
+    }
+    return rec;
+  }
+
   function renderLog() {
     const block = $('progress-block');
     if (currentLog.length === 0) { block.hidden = true; editIdx = -1; return; }
     block.hidden = false;
     Chart.render($('chart'), currentLog);
 
+    const rec = calcRecords(currentLog);
+    $('records').innerHTML =
+      `<div class="rec"><span class="rec-v">${Viz.fmt(rec.w)}<span class="u"> кг</span></span><span class="rec-l">макс вес</span></div>` +
+      `<div class="rec"><span class="rec-v">≈${Viz.fmt(Math.round(rec.orm * 2) / 2)}<span class="u"> кг</span></span><span class="rec-l">1ПМ</span></div>` +
+      (rec.vol > 0 ? `<div class="rec"><span class="rec-v">${Viz.fmt(rec.vol)}<span class="u"> кг</span></span><span class="rec-l">объём</span></div>` : '');
+
+    // запись — PR по весу, если она строго тяжелее всех предыдущих
+    const prFlags = [];
+    let mw = 0;
+    for (const e of currentLog) { prFlags.push(e.w > mw); mw = Math.max(mw, e.w); }
+
     const hist = $('history');
     hist.replaceChildren();
     const first = Math.max(0, currentLog.length - 8);
     for (let i = currentLog.length - 1; i >= first; i--) {
-      hist.appendChild(i === editIdx ? buildEditRow(i) : buildViewRow(i));
+      hist.appendChild(i === editIdx ? buildEditRow(i) : buildViewRow(i, prFlags[i]));
     }
   }
 
-  function buildViewRow(i) {
+  function buildViewRow(i, isPR) {
     const e = currentLog[i];
     const li = document.createElement('li');
     const sets = e.s && e.r ? `<span class="h-sets">${e.s}×${e.r}</span>` : '<span class="h-sets"></span>';
-    li.innerHTML = `<span class="h-date">${fmtD(e.d)}</span>${sets}` +
+    li.innerHTML = `<span class="h-date">${fmtD(e.d)}</span>${isPR ? '<span class="pr-chip">PR</span>' : ''}${sets}` +
       `<span class="h-weight">${Viz.fmt(e.w)} <span class="u">кг</span></span>` +
       `<svg class="h-pen" viewBox="0 0 24 24" width="13" height="13"><path d="M4 20l1-4L16.5 4.5a2.12 2.12 0 013 3L8 19l-4 1z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>`;
     li.addEventListener('click', () => {
@@ -760,6 +616,7 @@
     const r = parseInt($('inp-reps').value, 10);
     if (s > 0) entry.s = s;
     if (r > 0) entry.r = r;
+    const prevRec = calcRecords(currentLog); // рекорды до новой записи
     currentLog.push(entry);
     if (currentLog.length > LOG_LIMIT) currentLog = currentLog.slice(-LOG_LIMIT);
     editIdx = -1;
@@ -768,6 +625,13 @@
     haptic.success();
     if (currentLog.length >= LOG_LIMIT - 5) {
       showToast(`История заполнена на ${currentLog.length}/${LOG_LIMIT} — старые записи начнут удаляться. Очистка — в настройках.`);
+    }
+    if (currentLog.length > 1) {
+      const beats = [];
+      if (entry.w > prevRec.w) beats.push('вес');
+      if ((entry.r ? entry.w * (1 + entry.r / 30) : entry.w) > prevRec.orm) beats.push('1ПМ');
+      if (entry.s && entry.r && prevRec.vol > 0 && entry.w * entry.s * entry.r > prevRec.vol) beats.push('объём');
+      if (beats.length) showToast('🏆 Новый рекорд: ' + beats.join(' · '));
     }
     const btn = $('btn-record');
     btn.classList.remove('saved');
@@ -921,11 +785,12 @@
   (() => {
     const zone = $('weight-scrub');
     const PX_PER_STEP = 14;
-    let startX = 0, startWeight = 0, active = false, moved = false;
+    let startX = 0, startWeight = 0, active = false, moved = false, pid = null;
 
     zone.addEventListener('pointerdown', (ev) => {
-      if (!current || ev.target === weightInput) return;
+      if (!current || active || ev.target === weightInput) return;
       active = true;
+      pid = ev.pointerId;
       moved = false;
       startX = ev.clientX;
       startWeight = current.weight;
@@ -933,14 +798,15 @@
       try { zone.setPointerCapture(ev.pointerId); } catch (_) {}
     });
     zone.addEventListener('pointermove', (ev) => {
-      if (!active) return;
+      if (!active || ev.pointerId !== pid) return;
       if (Math.abs(ev.clientX - startX) > 6) moved = true;
       const steps = Math.round((ev.clientX - startX) / PX_PER_STEP);
       setWeight(shiftWeight(startWeight, steps));
     });
     const end = (ev) => {
-      if (!active) return;
+      if (!active || ev.pointerId !== pid) return;
       active = false;
+      pid = null;
       zone.classList.remove('scrubbing');
       Storage.flush();
       if (ev.type === 'pointerup' && !moved) openWeightEditor();
@@ -1145,7 +1011,7 @@
       if (l.length > maxLen) { maxLen = l.length; maxName = exercises[i].name; }
     });
     const pct = Math.min(100, Math.round((maxLen / LOG_LIMIT) * 100));
-    $('mem-fill').style.width = pct + '%';
+    $('mem-fill').style.transform = `scaleX(${pct / 100})`;
     $('mem-fill').classList.toggle('warn', pct >= 85);
     $('mem-text').textContent = total === 0
       ? 'Записей пока нет'
@@ -1236,14 +1102,14 @@
       clearInterval(interval); interval = null;
       clearTimeout(doneTimeout); doneTimeout = null;
       btn.classList.remove('running', 'done');
-      fill.style.width = '0';
+      fill.style.transform = 'scaleX(0)';
       label.textContent = '⏱ ' + fmtT(duration);
     }
 
     function tick() {
       const left = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
       label.textContent = fmtT(left);
-      fill.style.width = `${Math.min(100, 100 * (1 - left / total))}%`;
+      fill.style.transform = `scaleX(${Math.min(1, 1 - left / total)})`;
       if (left <= 0) finish();
     }
 
@@ -1262,7 +1128,7 @@
       clearInterval(interval); interval = null;
       btn.classList.remove('running');
       btn.classList.add('done');
-      fill.style.width = '100%';
+      fill.style.transform = 'scaleX(1)';
       label.textContent = 'Отдых окончен';
       haptic.success();
       try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (_) {}
@@ -1316,6 +1182,7 @@
     }
   });
   document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && sheetIsOpen()) { closeSheet(); return; }
     if (ev.key === 'Enter' && document.activeElement && document.activeElement.tagName === 'INPUT') {
       document.activeElement.blur();
     }

@@ -22,7 +22,7 @@
       });
     })();
   </script>
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body>
   <div id="app">
@@ -42,6 +42,7 @@
           </button>
         </div>
       </header>
+      <div id="group-chips" class="group-chips" hidden></div>
       <div id="home-list">
         <div id="home-sections"></div>
         <div id="home-empty" class="empty-state" hidden>
@@ -49,7 +50,7 @@
           <p class="hint">Нажмите «+», чтобы добавить первое.</p>
         </div>
       </div>
-      <div class="credit">made by q for fam</div>
+      <div class="credit"><span>made by q for fam</span></div>
     </section>
 
     <!-- Экран: упражнение -->
@@ -111,6 +112,8 @@
         <button id="btn-record" class="btn-primary">Записать</button>
 
         <div id="progress-block" class="progress-block" hidden>
+          <h2 class="section-title">Рекорды</h2>
+          <div id="records" class="records"></div>
           <h2 class="section-title">Прогресс</h2>
           <div id="chart"></div>
           <ul id="history" class="history"></ul>
@@ -219,12 +222,6 @@
       </div>
     </section>
 
-    <div id="drag-bar" class="drag-bar" hidden>
-      <div class="drag-target" data-act="new">+ Новая группа</div>
-      <div class="drag-target" data-act="ungroup" hidden>Из группы</div>
-      <div class="drag-target danger" data-act="delete">Удалить</div>
-    </div>
-
     <div id="sheet-backdrop" class="sheet-backdrop" hidden>
       <div id="sheet" class="sheet" role="menu"></div>
     </div>
@@ -232,10 +229,10 @@
     <div id="toast" class="toast" hidden></div>
   </div>
 
-  <script src="js/storage.js?v=14"></script>
-  <script src="js/data.js?v=14"></script>
-  <script src="js/viz.js?v=14"></script>
-  <script src="js/chart.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/storage.js?v=16"></script>
+  <script src="js/data.js?v=16"></script>
+  <script src="js/viz.js?v=16"></script>
+  <script src="js/chart.js?v=16"></script>
+  <script src="js/app.js?v=16"></script>
 </body>
 </html>
